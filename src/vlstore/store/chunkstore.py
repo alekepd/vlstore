@@ -10,9 +10,16 @@ from typing import (
     Final,
     Tuple,
     Any,
+    TypeVar,
+    Generic,
+    ValuesView,
+    KeysView,
+    Iterator,
 )
+from math import ceil
 from dataclasses import dataclass
 from pathlib import Path
+from os import PathLike
 import blosc2  # type: ignore
 from ._types import (
     TYPE_OUT,
@@ -24,6 +31,7 @@ from ._types import (
 )
 from .util import bytewise_memoryview
 
+_TYPE_PATHCOMPAT = Union[str, PathLike]
 
 DEFAULT_CHUNK_SIZE: Final = int(2**22)
 
@@ -32,6 +40,28 @@ _default_cparams["typesize"] = 1
 _default_cparams["codec"] = blosc2.Codec.LZ4HC
 # setting ["use_dict"] = 1 causes bugs.
 _default_dparams = blosc2.dparams_dflts.copy()
+
+
+def _create_default_schunk(
+    *,
+    filename: Optional[Path] = None,
+    chunksize: int = DEFAULT_CHUNK_SIZE,
+    cparams: Optional[Dict] = None,
+    dparams: Optional[Dict] = None,
+    contiguous: bool = True,
+) -> blosc2.SChunk:
+    args: Dict[str, Any] = {}
+    args["chunksize"] = chunksize
+    if cparams is None:
+        cparams = _default_cparams
+    args["cparams"] = cparams
+    if dparams is None:
+        dparams = _default_dparams
+    args["dparams"] = dparams
+    if filename is not None:
+        args["urlpath"] = str(filename)
+    args["contiguous"] = contiguous
+    return blosc2.SChunk(**args)
 
 
 @dataclass(frozen=True)
@@ -77,27 +107,107 @@ class Location:
         """Return the raw end location."""
         return self.end_block - self.start_block
 
+    @classmethod
+    def from_start_end(cls, start: int, end: int, block_size: int) -> "Location":
+        """Create record from byte-based start and ends.
 
-def _create_default_schunk(
-    *,
-    filename: Optional[Path] = None,
-    chunksize: int = DEFAULT_CHUNK_SIZE,
-    cparams: Optional[Dict] = None,
-    dparams: Optional[Dict] = None,
-    contiguous: bool = True,
-) -> blosc2.SChunk:
-    args: Dict[str, Any] = {}
-    args["chunksize"] = chunksize
-    if cparams is None:
-        cparams = _default_cparams
-    args["cparams"] = cparams
-    if dparams is None:
-        dparams = _default_dparams
-    args["dparams"] = dparams
-    if filename is not None:
-        args["urlpath"] = str(filename)
-    args["contiguous"] = contiguous
-    return blosc2.SChunk(**args)
+        Arguments:
+        ---------
+        start:
+            Absolute (e.g., byte-wise) start location.
+        end:
+            Absolute (e.g., byte-wise) end location.
+        block_size:
+            Size of blocks. In above examples, in bytes.
+
+        Results:
+        -------
+        Location instance.
+
+        """
+        raw_start_block, start_remainder = divmod(start, block_size)
+        raw_end_block, end_remainder = divmod(end, block_size)
+        return cls(
+            start_block=raw_start_block,
+            end_block=raw_end_block + ceil(end_remainder),
+            block_size=block_size,
+            start_offset=start_remainder,
+            end_offset=block_size - end_remainder if end_remainder else 0,
+        )
+
+
+_T_KEY = TypeVar("_T_KEY", bound=TYPE_KEY)
+_TUPLE_FORM = Tuple[_T_KEY, int, int]
+
+
+class LocationIndex(Generic[_T_KEY]):
+    """Key-store of Locations.
+
+    A dictionary-like collection of Locations. Supports simple "serialization"
+    methods into primitive types for storage.
+    """
+
+    def __init__(self, locs: Optional[Dict[_T_KEY, Location]] = None) -> None:
+        """Initialize."""
+        if locs is None:
+            self.backing: Dict[_T_KEY, Location] = {}
+        else:
+            self.backing = locs
+
+    def __setitem__(self, key: _T_KEY, value: Location) -> None:
+        """Set item by key."""
+        self.backing[key] = value
+
+    def __getitem__(self, key: _T_KEY) -> Location:
+        """Get item by key."""
+        return self.backing[key]
+
+    def __delitem__(self, key: _T_KEY) -> None:
+        """Delete item by key."""
+        del self.backing[key]
+
+    def __contains__(self, key: _T_KEY) -> bool:
+        """Check if key is present in backing."""
+        return key in self.backing
+
+    def __len__(self) -> int:
+        """Return length of backing."""
+        return len(self.backing)
+
+    def __iter__(self) -> Iterator[_T_KEY]:
+        """Iterate over keys in backing."""
+        return iter(self.backing)
+
+    def values(self) -> ValuesView:
+        """Get values of underlying mapping."""
+        return self.backing.values()
+
+    def keys(self) -> KeysView:
+        """Get keys of underlying mapping."""
+        return self.backing.keys()
+
+    def to_ordered_pairs(self) -> List[_TUPLE_FORM]:
+        """Translate content into list of ordered pairs.
+
+        First element of each tuple is the key, second is the absolute start of the
+        entry, third is the absolute end of the entry.
+        """
+        return [(key, record.start, record.end) for key, record in self.backing.items()]
+
+    @classmethod
+    def from_ordered_pairs(
+        cls, content: Iterable[_TUPLE_FORM], block_size: int
+    ) -> "LocationIndex":
+        """Create instance using list of tuples and known block size.
+
+        First element of each tuple is the key, second is the absolute start of the
+        entry, third is the absolute end of the entry.
+        """
+        formed = (
+            (d[0], Location.from_start_end(start=d[1], end=d[2], block_size=block_size))
+            for d in content
+        )
+        return cls(locs=dict(formed))
 
 
 class SChunkStore:
@@ -121,21 +231,47 @@ class SChunkStore:
 
     """
 
-    def __init__(self, backing: Optional[blosc2.SChunk] = None) -> None:
+    def __init__(
+        self, location: Union[None, _TYPE_PATHCOMPAT, blosc2.SChunk], **kwargs
+    ) -> None:
         """Initialize BStore.
 
         Arguments:
         ---------
-        backing:
-            Schunk instance used for storage or None.
+        location:
+            If specified, the persistent location of the underlying schunk store.
+            If it does not exist, it is created; if it already exists, it is opened
+            read-only. If None, an in-memory store is used. If an Schunk instance,
+            directly used as store. Note that in the last case limited validation
+            on the instance is performed, and context manager behavior is limited.
+        **kwargs:
+            Passed to schunk creation if file/in-memory store is created. If opening
+            and existing file, ignored.
 
         """
-        self.lookup: Dict[TYPE_KEY, Location] = {}
-        if backing is None:
-            self.backing = _create_default_schunk()
-        else:
-            self.backing = backing
+        self.lookup: LocationIndex[TYPE_KEY] = LocationIndex()
         self.transfer_buffer = bytearray(self.chunksize)
+        # manage schunk store
+        if location is None:
+            # in-memory backing
+            self.backing = _create_default_schunk(**kwargs)
+        elif isinstance(location, blosc2.SChunk):
+            self.backing = location
+        else:
+            # disk backing
+            _p = Path(location).resolve()
+            if _p.is_dir():
+                raise ValueError(
+                    "Please specify a (possible) file, not an existing directory."
+                )
+            elif _p.is_file():
+                # need to pass more compression params?
+                # keep this RO for now
+                self.backing = blosc2.open(_p, mode="r")
+            elif _p.parent.is_dir():
+                self.backing = _create_default_schunk(filename=_p, **kwargs)
+            else:
+                raise ValueError("Could not use file location.")
 
     @property
     def chunksize(self) -> int:
