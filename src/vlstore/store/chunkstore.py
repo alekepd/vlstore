@@ -232,7 +232,7 @@ class SChunkStore:
     """
 
     def __init__(
-        self, location: Union[None, _TYPE_PATHCOMPAT, blosc2.SChunk], **kwargs
+        self, location: Union[None, _TYPE_PATHCOMPAT, blosc2.SChunk] = None, **kwargs
     ) -> None:
         """Initialize BStore.
 
@@ -250,7 +250,6 @@ class SChunkStore:
 
         """
         self.lookup: LocationIndex[TYPE_KEY] = LocationIndex()
-        self.transfer_buffer = bytearray(self.chunksize)
         # manage schunk store
         if location is None:
             # in-memory backing
@@ -272,6 +271,7 @@ class SChunkStore:
                 self.backing = _create_default_schunk(filename=_p, **kwargs)
             else:
                 raise ValueError("Could not use file location.")
+        self.transfer_buffer = bytearray(self.chunksize)
 
     @property
     def chunksize(self) -> int:
