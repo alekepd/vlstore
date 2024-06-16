@@ -59,8 +59,7 @@ def test_array_multiple_shuffe_variedsize_disk_hash() -> None:
     FILENAME: Final = Path("storage.schunk2")
     NUM_RECORDS: Final = 10
     BIGGER_SIZE = 10 * SIZE
-    s = _create_default_schunk(filename=FILENAME)
-    storage = SChunkStore(location=s)
+    storage = SChunkStore(location=FILENAME)
     d = Depot(codec=flatfloatndarray_codec, backing=storage)
     hash_record = {}
     for x in range(NUM_RECORDS):
