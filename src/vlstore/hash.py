@@ -1,14 +1,13 @@
 """Functions for calculating hashes from data."""
 from typing import Final, Any
-import xxhash # type: ignore
+import xxhash  # type: ignore
 
 INT_MAX_BYTES: Final = 64
 INT_BYTE_ORDER: Final = "big"
 HASH_SEED: Final = 617491234
 
-def byte_hash(
-    content: Any, /, seed: int = HASH_SEED
-) -> str:
+
+def byte_hash(content: Any, /, seed: int = HASH_SEED) -> str:
     """Hash bytes object using xxhash.
 
     Arguments:

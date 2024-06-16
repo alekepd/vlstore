@@ -35,7 +35,7 @@ def _checked_numpy_f32_packer(
 ) -> Union[memoryview, TYPE_OUT]:
     if not x.flags["C_CONTIGUOUS"]:
         raise ValueError("Only C-contiguous arrays may be serialized.")
-    if x.dtype is not np.dtype('float32'):
+    if x.dtype is not np.dtype("float32"):
         raise ValueError("Data must be float32.")
     data = bytewise_memoryview(x)
     if out is None:
@@ -50,7 +50,7 @@ def _numpy_f32_unpacker(
     x: TYPE_RETURNDATA,
 ) -> np.ndarray:
     view = bytewise_memoryview(x)
-    return np.frombuffer(view,dtype=np.dtype('float32'))
+    return np.frombuffer(view, dtype=np.dtype("float32"))
 
 
 flatfloatndarray_codec = Codec[np.ndarray](
