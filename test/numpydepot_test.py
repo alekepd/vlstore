@@ -5,7 +5,7 @@ from random import shuffle
 from pathlib import Path
 import numpy as np
 from vlstore.serialize import flatfloatndarray_codec
-from vlstore.store import SChunkStore, Depot, _create_default_schunk
+from vlstore.store import SChunkStore, Depot
 from vlstore.hash import byte_hash
 
 SIZE: Final = int(2**20)
