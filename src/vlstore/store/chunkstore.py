@@ -263,6 +263,7 @@ class SChunkStore:
         else:
             kwargs["meta"] = {self.META_MAGIC: self.MAGIC}
         # manage schunk store
+        self.read_only = False
         if location is None:
             # in-memory backing
             self.backing = _create_default_schunk(**kwargs)
@@ -278,6 +279,7 @@ class SChunkStore:
             elif _p.is_file():
                 # need to pass more compression params?
                 # keep this RO for now
+                self.read_only = True
                 self.backing = blosc2.open(_p, mode="r")
                 assert self.backing.meta[self.META_MAGIC] == self.MAGIC
                 self.lookup = LocationIndex.from_ordered_pairs(
@@ -328,6 +330,8 @@ class SChunkStore:
             value.
 
         """
+        if self.read_only:
+            raise ValueError("Backing is read-only.")
         # check to see if something already is present under this key
         already_exists = key in self.lookup
         if overwrite and already_exists:
@@ -707,3 +711,13 @@ class SChunkStore:
         Note that this is not related to the size of stored items.
         """
         return len(self.lookup)
+
+    def __enter__(self) -> "SChunkStore":
+        """Return self as open has already occurred."""
+        return self
+
+    def __exit__(self, exc_type: Any, exc_value: Any, exc_tb: Any) -> Literal[False]:
+        """Close file and ignore exceptions."""
+        if not self.read_only:
+            self.close()
+        return False

@@ -114,3 +114,41 @@ def test_array_openclose_hash() -> None:
         assert hash_record[key] == byte_hash(d.get(key).tobytes())
 
     FILENAME.unlink()
+
+
+def test_array_chunkcontextm_hash() -> None:
+    """Tests storing and recovering multiple stored arrays using context manager.
+
+    with construct is used.
+
+    Content has varying sizes and is retrieved out of order. Only some content
+    is retrieved.
+
+    Storage is disk-backed, comparison is hash based.
+    """
+    NAME: Final = "test_name"
+    FILENAME: Final = Path("storage.schunk2")
+    NUM_RECORDS: Final = 10
+    BIGGER_SIZE = 10 * SIZE
+    with SChunkStore(location=FILENAME) as storage:
+        d = Depot(codec=flatfloatndarray_codec, backing=storage)
+        hash_record = {}
+        for x in range(NUM_RECORDS):
+            name = NAME + str(x)
+            size = BIGGER_SIZE + int(np.floor(SIZE_DELTA * _rng.random()))
+            data = _rng.random(size, dtype=np.float32)
+            hash_record[name] = byte_hash(data.tobytes())
+            d.put(name, data)
+
+    del d
+
+    keys = list(hash_record.keys())
+    shuffle(keys)
+
+    with SChunkStore(location=FILENAME) as storage:
+        d = Depot(codec=flatfloatndarray_codec, backing=storage)
+
+        for key in keys[::2]:
+            assert hash_record[key] == byte_hash(d.get(key).tobytes())
+
+    FILENAME.unlink()
