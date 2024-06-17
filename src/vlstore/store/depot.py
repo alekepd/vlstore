@@ -8,7 +8,9 @@ from typing import (
     List,
     Any,
     Literal,
+    Union,
 )
+from pathlib import Path
 from .chunkstore import SChunkStore
 from ..serialize import Codec
 from .util import bytewise_memoryview
@@ -32,13 +34,15 @@ class Depot(Generic[_T]):
     def __init__(
         self,
         codec: Codec[_T],
-        backing: Optional[SChunkStore] = None,
+        backing: Union[None, SChunkStore, Path, str] = None,
         initial_buffer_size: int = 0,
         recycle_buffer: bool = False,
     ) -> None:
         """Initialize."""
         if backing is None:
             self.backing = SChunkStore()
+        elif isinstance(backing, Path) or isinstance(backing, str):
+            self.backing = SChunkStore(location=backing)
         else:
             self.backing = backing
         self.codec = codec
