@@ -32,7 +32,7 @@ jobs:
           python-version: ${{ matrix.cfg.python-version }}
       - name: Install package
         run: |
-          pip install .[all]
+          pip install --no-binary python-blosc2 .[all] 
       - name: Test with pytest
         run: |
           pytest -vs
