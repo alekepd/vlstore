@@ -5,7 +5,7 @@ from random import shuffle
 from pathlib import Path
 import numpy as np
 from vlstore.serialize import flatfloatndarray_codec
-from vlstore.store import SChunkStore, Depot, _create_default_schunk
+from vlstore.store import SChunkStore, Depot
 from vlstore.hash import byte_hash
 
 SIZE: Final = int(2**20)
@@ -45,8 +45,8 @@ def test_array_multiple_shuffle_variedsize() -> None:
         assert (data_record[key] == d.get(key)).all()
 
 
-def test_array_multiple_shuffe_variedsize_disk_hash() -> None:
-    """Tests storing and recovering multiple stored arrays using fused gets.
+def test_array_multiple_shuffle_variedsize_disk_hash() -> None:
+    """Tests storing and recovering multiple stored arrays.
 
     Content has varying sizes and is retrieved out of order. Only some content
     is retrieved.
@@ -59,8 +59,7 @@ def test_array_multiple_shuffe_variedsize_disk_hash() -> None:
     FILENAME: Final = Path("storage.schunk2")
     NUM_RECORDS: Final = 10
     BIGGER_SIZE = 10 * SIZE
-    s = _create_default_schunk(filename=FILENAME)
-    storage = SChunkStore(backing=s)
+    storage = SChunkStore(location=FILENAME)
     d = Depot(codec=flatfloatndarray_codec, backing=storage)
     hash_record = {}
     for x in range(NUM_RECORDS):
@@ -73,5 +72,153 @@ def test_array_multiple_shuffe_variedsize_disk_hash() -> None:
     shuffle(keys)
     for key in keys[::2]:
         assert hash_record[key] == byte_hash(d.get(key).tobytes())
+
+    FILENAME.unlink()
+
+
+def test_array_openclose_hash() -> None:
+    """Tests storing and recovering multiple stored arrays after file close and opening.
+
+    No context manager is used; close is called manually on the SChunkStore.
+
+    Content has varying sizes and is retrieved out of order. Only some content
+    is retrieved.
+
+    Storage is disk-backed, comparison is hash based.
+    """
+    NAME: Final = "test_name"
+    FILENAME: Final = Path("storage.schunk2")
+    NUM_RECORDS: Final = 10
+    BIGGER_SIZE = 10 * SIZE
+    storage = SChunkStore(location=FILENAME)
+    d = Depot(codec=flatfloatndarray_codec, backing=storage)
+    hash_record = {}
+    for x in range(NUM_RECORDS):
+        name = NAME + str(x)
+        size = BIGGER_SIZE + int(np.floor(SIZE_DELTA * _rng.random()))
+        data = _rng.random(size, dtype=np.float32)
+        hash_record[name] = byte_hash(data.tobytes())
+        d.put(name, data)
+    storage.close()
+
+    del d
+    del storage
+
+    keys = list(hash_record.keys())
+    shuffle(keys)
+
+    storage = SChunkStore(location=FILENAME)
+    d = Depot(codec=flatfloatndarray_codec, backing=storage)
+
+    for key in keys[::2]:
+        assert hash_record[key] == byte_hash(d.get(key).tobytes())
+
+    FILENAME.unlink()
+
+
+def test_array_chunkcontextm_hash() -> None:
+    """Tests storing and recovering multiple stored arrays using context manager.
+
+    with construct is used.
+
+    Content has varying sizes and is retrieved out of order. Only some content
+    is retrieved.
+
+    Storage is disk-backed, comparison is hash based.
+    """
+    NAME: Final = "test_name"
+    FILENAME: Final = Path("storage.schunk2")
+    NUM_RECORDS: Final = 10
+    BIGGER_SIZE = 10 * SIZE
+    with SChunkStore(location=FILENAME) as storage:
+        d = Depot(codec=flatfloatndarray_codec, backing=storage)
+        hash_record = {}
+        for x in range(NUM_RECORDS):
+            name = NAME + str(x)
+            size = BIGGER_SIZE + int(np.floor(SIZE_DELTA * _rng.random()))
+            data = _rng.random(size, dtype=np.float32)
+            hash_record[name] = byte_hash(data.tobytes())
+            d.put(name, data)
+
+    del d
+
+    keys = list(hash_record.keys())
+    shuffle(keys)
+
+    with SChunkStore(location=FILENAME) as storage:
+        d = Depot(codec=flatfloatndarray_codec, backing=storage)
+
+        for key in keys[::2]:
+            assert hash_record[key] == byte_hash(d.get(key).tobytes())
+
+    FILENAME.unlink()
+
+
+def test_array_depotcontextm_hash() -> None:
+    """Tests storing and recovering multiple stored arrays using context manager.
+
+    with construct is used on Depot.
+
+    Content has varying sizes and is retrieved out of order. Only some content
+    is retrieved.
+
+    Storage is disk-backed, comparison is hash based.
+    """
+    NAME: Final = "test_name"
+    FILENAME: Final = Path("storage.schunk2")
+    NUM_RECORDS: Final = 10
+    BIGGER_SIZE = 10 * SIZE
+    storage = SChunkStore(location=FILENAME)
+    with Depot(codec=flatfloatndarray_codec, backing=storage) as d:
+        hash_record = {}
+        for x in range(NUM_RECORDS):
+            name = NAME + str(x)
+            size = BIGGER_SIZE + int(np.floor(SIZE_DELTA * _rng.random()))
+            data = _rng.random(size, dtype=np.float32)
+            hash_record[name] = byte_hash(data.tobytes())
+            d.put(name, data)
+
+    del storage
+
+    keys = list(hash_record.keys())
+    shuffle(keys)
+
+    storage = SChunkStore(location=FILENAME)
+    with Depot(codec=flatfloatndarray_codec, backing=storage) as d:
+        for key in keys[::2]:
+            assert hash_record[key] == byte_hash(d.get(key).tobytes())
+
+    FILENAME.unlink()
+
+
+def test_array_depot_full_hash() -> None:
+    """Tests storing and recovering multiple stored arrays full Depot syntax.
+
+    with construct is used on Depot, no reference to SChunk is made.
+
+    Content has varying sizes and is retrieved out of order. Only some content
+    is retrieved.
+
+    Storage is disk-backed, comparison is hash based.
+    """
+    NAME: Final = "test_name"
+    FILENAME: Final = Path("storage.schunk2")
+    NUM_RECORDS: Final = 10
+    BIGGER_SIZE = 10 * SIZE
+    with Depot(codec=flatfloatndarray_codec, backing=FILENAME) as d:
+        hash_record = {}
+        for x in range(NUM_RECORDS):
+            name = NAME + str(x)
+            size = BIGGER_SIZE + int(np.floor(SIZE_DELTA * _rng.random()))
+            data = _rng.random(size, dtype=np.float32)
+            hash_record[name] = byte_hash(data.tobytes())
+            d.put(name, data)
+
+    keys = list(hash_record.keys())
+    shuffle(keys)
+
+    with Depot(codec=flatfloatndarray_codec, backing=FILENAME) as d:
+        for key in keys[::2]:
+            assert hash_record[key] == byte_hash(d.get(key).tobytes())
 
     FILENAME.unlink()

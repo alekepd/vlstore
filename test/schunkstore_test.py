@@ -225,7 +225,7 @@ def test_schunk_large_many_chunksize(chunksize: int) -> None:
         names.append(NAME + str(x))
         content.append(randbytes(SIZE_LARGE))
     s = _create_default_schunk(chunksize=chunksize)
-    storage = SChunkStore(backing=s)
+    storage = SChunkStore(location=s)
     for name, data in zip(names, content):
         storage.put(name, data)
     for name, data in zip(names, content):
@@ -287,7 +287,7 @@ def test_schunk_manual_numpy_disk() -> None:
     data2 = rng.random(SHAPE_2, dtype=np.float64)
 
     s = _create_default_schunk(filename=FILENAME)
-    storage = SChunkStore(backing=s)
+    storage = SChunkStore(location=s)
     storage.put(NAME_1, data1.tobytes())
     storage.put(NAME_2, data2.tobytes())
 
