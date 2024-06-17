@@ -16,7 +16,6 @@ from typing import (
     KeysView,
     Iterator,
 )
-from math import ceil
 from dataclasses import dataclass
 from pathlib import Path
 from os import PathLike
@@ -280,6 +279,7 @@ class SChunkStore:
                 # need to pass more compression params?
                 # keep this RO for now
                 self.backing = blosc2.open(_p, mode="r")
+                assert self.backing.meta[self.META_MAGIC] == self.MAGIC
                 self.lookup = LocationIndex.from_ordered_pairs(
                     self.backing.vlmeta[self.VLMETA_SAVEDLOOKUP],
                     block_size=self.chunksize,
