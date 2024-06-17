@@ -262,6 +262,7 @@ class SChunkStore:
             kwargs["meta"].update({self.META_MAGIC: self.MAGIC})
         else:
             kwargs["meta"] = {self.META_MAGIC: self.MAGIC}
+
         # manage schunk store
         self.read_only = False
         if location is None:
@@ -290,6 +291,8 @@ class SChunkStore:
                 self.backing = _create_default_schunk(filename=_p, **kwargs)
             else:
                 raise ValueError("Could not use file location.")
+
+        # must happen after backing is initialized
         self.transfer_buffer = bytearray(self.chunksize)
 
     @property
