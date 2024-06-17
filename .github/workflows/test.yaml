@@ -1,6 +1,7 @@
 name: Unit Tests
 
 on:
+
   push:
     branches:
       - "main"
@@ -32,7 +33,7 @@ jobs:
           python-version: ${{ matrix.cfg.python-version }}
       - name: Install package
         run: |
-          pip install --no-binary python-blosc2 .[all] 
+          pip install --no-binary numpy==1.21.5 .[all] 
       - name: Test with pytest
         run: |
           pytest -vs
