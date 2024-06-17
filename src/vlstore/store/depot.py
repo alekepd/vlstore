@@ -6,6 +6,8 @@ from typing import (
     Optional,
     Iterable,
     List,
+    Any,
+    Literal,
 )
 from .chunkstore import SChunkStore
 from ..serialize import Codec
@@ -88,3 +90,17 @@ class Depot(Generic[_T]):
         if len(self._buffer) < size:  # type: ignore
             self._buffer = memoryview(bytearray(size))
         return self._buffer[0:size]  # type: ignore
+
+    def close(self) -> None:
+        """Close underlying storage."""
+        self.backing.close()
+
+    def __enter__(self) -> "Depot":
+        """Call __enter__ on underlying storage."""
+        self.backing.__enter__()
+        return self
+
+    def __exit__(self, exc_type: Any, exc_value: Any, exc_tb: Any) -> Literal[False]:
+        """Call __exit__ on underlying storage."""
+        self.backing.__exit__(exc_type, exc_value, exc_tb)
+        return False
