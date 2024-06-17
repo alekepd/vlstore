@@ -49,6 +49,7 @@ def _create_default_schunk(
     cparams: Optional[Dict] = None,
     dparams: Optional[Dict] = None,
     contiguous: bool = True,
+    meta: Optional[Dict[Union[bytes, str], Any]] = None,
 ) -> blosc2.SChunk:
     args: Dict[str, Any] = {}
     args["chunksize"] = chunksize
@@ -61,6 +62,8 @@ def _create_default_schunk(
     if filename is not None:
         args["urlpath"] = str(filename)
     args["contiguous"] = contiguous
+    if meta is not None:
+        args["meta"] = meta
     return blosc2.SChunk(**args)
 
 
@@ -129,10 +132,10 @@ class Location:
         raw_end_block, end_remainder = divmod(end, block_size)
         return cls(
             start_block=raw_start_block,
-            end_block=raw_end_block + ceil(end_remainder),
+            end_block=raw_end_block + 1 if end_remainder else raw_end_block,
             block_size=block_size,
             start_offset=start_remainder,
-            end_offset=block_size - end_remainder if end_remainder else 0,
+            end_offset=end_remainder - block_size if end_remainder else 0,
         )
 
 
@@ -231,6 +234,12 @@ class SChunkStore:
 
     """
 
+    VLMETA_SAVEDLOOKUP: Final = "saved_lookup"
+    # generated via uuid4
+    META_MAGIC: Final = "magic"
+    # identifies schunk file as conforming to format
+    MAGIC: Final = b"\xa4\x9a3g\xcf}D\xd1\xb0\x97\xe0Q\x05\x836\xeb"
+
     def __init__(
         self, location: Union[None, _TYPE_PATHCOMPAT, blosc2.SChunk] = None, **kwargs
     ) -> None:
@@ -250,6 +259,10 @@ class SChunkStore:
 
         """
         self.lookup: LocationIndex[TYPE_KEY] = LocationIndex()
+        if "meta" in kwargs:
+            kwargs["meta"].update({self.META_MAGIC: self.MAGIC})
+        else:
+            kwargs["meta"] = {self.META_MAGIC: self.MAGIC}
         # manage schunk store
         if location is None:
             # in-memory backing
@@ -267,6 +280,10 @@ class SChunkStore:
                 # need to pass more compression params?
                 # keep this RO for now
                 self.backing = blosc2.open(_p, mode="r")
+                self.lookup = LocationIndex.from_ordered_pairs(
+                    self.backing.vlmeta[self.VLMETA_SAVEDLOOKUP],
+                    block_size=self.chunksize,
+                )
             elif _p.parent.is_dir():
                 self.backing = _create_default_schunk(filename=_p, **kwargs)
             else:
@@ -591,6 +608,18 @@ class SChunkStore:
                 (item_end - item_start) * self.typesize
             )
         del self.lookup[key]
+
+    def _write_lookup(self) -> None:
+        self.backing.vlmeta[self.VLMETA_SAVEDLOOKUP] = self.lookup.to_ordered_pairs()
+
+    def close(self) -> None:
+        """Write metadata to file.
+
+        Other writes _should_ already be synchronous.
+        """
+        self._write_lookup()
+        # should some file be closed? blosc2 documents seem to
+        # say no. Perhaps all writes are synchronous.
 
     def _init_buffer(self) -> None:
         """Initialize buffer for transfer.
