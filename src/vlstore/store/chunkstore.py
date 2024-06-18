@@ -15,6 +15,7 @@ from typing import (
     ValuesView,
     KeysView,
     Iterator,
+    Callable,
 )
 from dataclasses import dataclass
 from pathlib import Path
@@ -89,6 +90,47 @@ class Location:
                 "end_offset must be non-negative and less than block_size."
             )
 
+    def block_split(self) -> List["Location"]:
+        """Split location according to block boundaries.
+
+        If a given location spans multiple blocks, this function breaks that location
+        into parts, where each part only lives on a single block. Note that end_block
+        of the derived single-block locations will not be the same as start_block, as
+        the end index is exclusive.
+
+        """
+        to_return: List[Location] = []
+        # if already a single block location, return list of self.
+        if self.start_block == (self.end_block - 1):
+            return [self]
+        else:
+            # we are on more than one block
+
+            # First block defined to be start to first block mark
+            # Note that this _might_ be partial.
+            partial_first_chunk = self.from_start_end(
+                self.start,
+                (self.start_block + 1) * self.block_size,
+                block_size=self.block_size,
+            )
+            to_return.append(partial_first_chunk)
+        # middle blocks are full by definition, so we can quickly define them
+        # note that this loop may be empty, that is fine.
+        for chunk in range(self.start_block + 1, self.end_block - 1):
+            full_chunk = Location(
+                start_block=chunk, end_block=chunk + 1, block_size=self.block_size
+            )
+            to_return.append(full_chunk)
+        # last block is defined to be the penultimate block to parent end point
+        # Note that this _might_ be partial.
+        partial_last_chunk = Location.from_start_end(
+            start=(self.end_block - 1) * self.block_size,
+            end=self.end,
+            block_size=self.block_size,
+        )
+        to_return.append(partial_last_chunk)
+        return to_return
+
     @property
     def length(self) -> int:
         """Return the length of the selection."""
@@ -108,6 +150,10 @@ class Location:
     def n_blocks(self) -> int:
         """Return the raw end location."""
         return self.end_block - self.start_block
+
+    def __len__(self) -> int:
+        """Return raw (not block-based) length."""
+        return self.end - self.start
 
     @classmethod
     def from_start_end(cls, start: int, end: int, block_size: int) -> "Location":
@@ -138,6 +184,79 @@ class Location:
         )
 
 
+_T = TypeVar("_T")
+
+
+def _iter_max(content: Iterable[_T], call: Callable[[_T], Any]) -> _T:
+    """Get maximum of iterable.
+
+    Arguments:
+    ---------
+    content:
+        Iterable to go through. If zero length, exception is raised.
+    call:
+        Applied to each item before comparison is done.
+
+    Returns:
+    -------
+    Biggest item (_not_ the output of call on that object).
+
+    """
+    _it = iter(content)
+    try:
+        best = next(_it)
+    except StopIteration as e:
+        raise ValueError("Empty sequence") from e
+    best_val = call(best)
+    for new_val, new in ((call(x), x) for x in _it):
+        if new_val > best_val:
+            best = new
+            best_val = new_val
+    return best
+
+
+def _iter_min(content: Iterable[_T], call: Callable[[_T], Any]) -> _T:
+    """Get minimum of iterable.
+
+    Arguments:
+    ---------
+    content:
+        Iterable to go through. If zero length, exception is raised.
+    call:
+        Applied to each item before comparison is done.
+
+    Returns:
+    -------
+    Smallest item (_not_ the output of call on that object).
+
+    """
+    _it = iter(content)
+    try:
+        best = next(_it)
+    except StopIteration as e:
+        raise ValueError("Empty sequence") from e
+    best_val = call(best)
+    for new_val, new in ((call(x), x) for x in _it):
+        if new_val < best_val:
+            best = new
+            best_val = new_val
+    return best
+
+
+def _chunk_memoryview(sizes: List[int], target: memoryview) -> List[memoryview]:
+    """Split memoryview into partial memory views of given sizes."""
+    # assume length of target is not 0
+    if sum(sizes) != len(target):
+        raise ValueError("Chunk sizes do not correspond to target length.")
+    to_return: List[memoryview] = []
+    start = 0
+    for length in sizes:
+        end = start + length
+        to_return.append(target[start:end])
+        start = end
+    return to_return
+
+
 _T_KEY = TypeVar("_T_KEY", bound=TYPE_KEY)
 _TUPLE_FORM = Tuple[_T_KEY, int, int]
 
@@ -155,10 +274,31 @@ class LocationIndex(Generic[_T_KEY]):
             self.backing: Dict[_T_KEY, Location] = {}
         else:
             self.backing = locs
+        self._last: Optional[Location] = None
+        self._first: Optional[Location] = None
+
+    def _reset_firstlast(self) -> None:
+        self._last = None
+        self._first = None
+
+    @property
+    def last(self) -> Location:
+        """Return Location with highest end value."""
+        if self._last is None:
+            self._last = _iter_max(self.backing.values(), call=lambda x: x.end)
+        return self._last
+
+    @property
+    def first(self) -> Location:
+        """Return Location with lowest start value."""
+        if self._first is None:
+            self._first = _iter_min(self.backing.values(), call=lambda x: x.start)
+        return self._first
 
     def __setitem__(self, key: _T_KEY, value: Location) -> None:
         """Set item by key."""
         self.backing[key] = value
+        self._reset_firstlast()
 
     def __getitem__(self, key: _T_KEY) -> Location:
         """Get item by key."""
@@ -167,6 +307,7 @@ class LocationIndex(Generic[_T_KEY]):
     def __delitem__(self, key: _T_KEY) -> None:
         """Delete item by key."""
         del self.backing[key]
+        self._reset_firstlast()
 
     def __contains__(self, key: _T_KEY) -> bool:
         """Check if key is present in backing."""
@@ -195,6 +336,41 @@ class LocationIndex(Generic[_T_KEY]):
         entry, third is the absolute end of the entry.
         """
         return [(key, record.start, record.end) for key, record in self.backing.items()]
+
+    def plan(
+        self, size: int, start_aligned: bool = True, block_size: Optional[int] = None
+    ) -> Location:
+        """Return location corresponding to free space.
+
+        Arguments:
+        ---------
+        size:
+            size of requested space.
+        start_aligned:
+            Whether to align the proposed space at the start of a empty block.
+        block_size:
+            The size of block to use in the allocation. If Locations are already
+            present (i.e., length > 0), setting None will use the block size
+            in the last value. If empty, this must be specified.
+
+        Results:
+        -------
+        Location. Note that this location is not recorded in the instance.
+
+        """
+        if block_size is None:
+            try:
+                block_size = self.last.block_size
+            except ValueError as e:
+                raise ValueError("When empty, block_size must be specified.") from e
+
+        if not self.backing:
+            start = 0
+        elif start_aligned:
+            start = self.last.end_block * self.last.block_size
+        else:
+            start = self.last.end
+        return Location.from_start_end(start, start + size, block_size=block_size)
 
     @classmethod
     def from_ordered_pairs(
@@ -240,7 +416,10 @@ class SChunkStore:
     MAGIC: Final = b"\xa4\x9a3g\xcf}D\xd1\xb0\x97\xe0Q\x05\x836\xeb"
 
     def __init__(
-        self, location: Union[None, _TYPE_PATHCOMPAT, blosc2.SChunk] = None, **kwargs
+        self,
+        location: Union[None, _TYPE_PATHCOMPAT, blosc2.SChunk] = None,
+        start_aligned: bool = True,
+        **kwargs,
     ) -> None:
         """Initialize BStore.
 
@@ -252,12 +431,17 @@ class SChunkStore:
             read-only. If None, an in-memory store is used. If an Schunk instance,
             directly used as store. Note that in the last case limited validation
             on the instance is performed, and context manager behavior is limited.
+        start_aligned:
+            Whether memory allocations should be aligned to the start of the next
+            free chunk. This makes storage faster and individual retrieval faster,
+            but may increase memory load.
         **kwargs:
             Passed to schunk creation if file/in-memory store is created. If opening
             and existing file, ignored.
 
         """
         self.lookup: LocationIndex[TYPE_KEY] = LocationIndex()
+        self.start_aligned = start_aligned
         if "meta" in kwargs:
             kwargs["meta"].update({self.META_MAGIC: self.MAGIC})
         else:
@@ -293,7 +477,8 @@ class SChunkStore:
                 raise ValueError("Could not use file location.")
 
         # must happen after backing is initialized
-        self.transfer_buffer = bytearray(self.chunksize)
+        self.transfer_buffer = memoryview(bytearray(self.chunksize))
+        self._zero_buffer = memoryview(bytes(self.chunksize))
 
     @property
     def chunksize(self) -> int:
@@ -310,7 +495,8 @@ class SChunkStore:
         """Return list of all used storage locations."""
         return list(self.lookup.values())
 
-    def put(
+    # the mccabe complexity is high here. Target for future refactor.
+    def put(  # noqa: C901
         self,
         key: TYPE_KEY,
         value: TYPE_INPUTDATA,
@@ -343,22 +529,68 @@ class SChunkStore:
             raise ValueError(f"Entry already exists for {key!r}.")
 
         # store value
-        value_size = len(bytewise_memoryview(value))
+        value_view = bytewise_memoryview(value)
+        value_size = len(value_view)
         if value_size % self.backing.typesize != 0:
             raise ValueError("Storage object size not divisible by typesize.")
-        prepped = self._prepare(value)
-        remainder = value_size % self.chunksize
-        fill_size = self.chunksize - remainder if remainder else 0
-        location = Location(
-            start_block=self.backing.nchunks,
-            end_block=self.backing.nchunks + len(prepped),
-            block_size=self.chunksize,
-            end_offset=-fill_size,
+        if value_size == 0:
+            raise ValueError("Cannot store length-0 bytes.")
+
+        # get required chunks from lookup methods
+        location = self.lookup.plan(
+            value_size, start_aligned=self.start_aligned, block_size=self.chunksize
         )
+        location_chunks = location.block_split()
+
+        chunk_views = _chunk_memoryview(
+            sizes=[len(x) for x in location_chunks], target=value_view
+        )
+
+        # then go from views to prepped.
+        # First and last chunk need special treatment.
+        # actually, only the first and last need any consideration.
+        # there is always at least one chunk
+        if len(chunk_views[0]) != self.chunksize:
+            # if location_chunks[0].start != 0:
+            # deal with partial chunk.
+            chunk = chunk_views.pop(0)
+            chunk_location = location_chunks.pop(0)
+            if chunk_location.start_offset == 0:
+                self._init_buffer()
+                self.transfer_buffer[: len(chunk)] = chunk
+                self.backing.append_data(self.transfer_buffer)
+            else:
+                self.backing.decompress_chunk(
+                    chunk_location.start_block, dst=self.transfer_buffer
+                )
+                start = chunk_location.start_offset
+                self.transfer_buffer[start : start + len(chunk_location)] = chunk
+            # usage of copy here is unclear
+            # if no copy is made, it seems that the transfer buffer would be
+            # referenced by the underlying schunk?
+            self.backing.update_data(
+                chunk_location.start_block, data=self.transfer_buffer, copy=True
+            )
+
+        # Continue if there are further chunks to write.
+        if chunk_views:
+            # Deal with full-size middle chunk
+            # if we have no middle chunks, this loop will do nothing
+            for chunk in chunk_views[:-1]:
+                self.backing.append_data(chunk)
+
+            # deal with final chunk, need to consider if it needs to be padded.
+            chunk = chunk_views[-1]
+            if len(chunk) == self.chunksize:
+                self.backing.append_data(chunk)
+            else:
+                self._init_buffer()
+                self.transfer_buffer[: len(chunk)] = chunk
+                self.backing.append_data(self.transfer_buffer)
+
         if check and location.end - location.start != value_size:
             raise ValueError("Allocated slot is the wrong size for the chunk.")
-        for c in prepped:
-            self.backing.append_data(c)
+
         self.lookup[key] = location
 
     @overload
@@ -641,48 +873,7 @@ class SChunkStore:
         """
         # zero out transfer buffer, this seems to be the most direct way
         # to do so to a bytearray.
-        bytearray.__init__(self.transfer_buffer, len(self.transfer_buffer))
-
-    def _prepare(
-        self,
-        source: TYPE_INPUTDATA,
-    ) -> List[memoryview]:
-        """Transform a buffer to a series of buffers of a given size.
-
-        Note that the final buffer may be padded with zeros, and that returned
-        buffers may refer to the memory underlying the original object.
-
-        Arguments:
-        ---------
-        source:
-            Buffer to break into parts.
-
-        Returns:
-        -------
-        List of memoryview instances. All but the final instance will be a view of the
-        original objects memory.
-
-        """
-        source_view = bytewise_memoryview(source)
-        source_size = len(source_view)
-        n_full_buffers, remainder = divmod(source_size, self.chunksize)
-        prepped: List[memoryview] = []
-        transfer_index = -1
-        for transfer_index in range(n_full_buffers):
-            selection = slice(
-                transfer_index * self.chunksize, (transfer_index + 1) * self.chunksize
-            )
-            prepped.append(source_view[selection])
-        # if we need to make a new padded chunk for the last part of the data.
-        if remainder > 0:
-            # zero out our existing buffer
-            self._init_buffer()
-            subsize = source_size - (transfer_index + 1) * self.chunksize
-            self.transfer_buffer[0:subsize] = source_view[
-                (transfer_index + 1) * self.chunksize : source_size
-            ]
-            prepped.append(memoryview(self.transfer_buffer))
-        return prepped
+        self.transfer_buffer[:] = self._zero_buffer
 
     def __delitem__(self, key: TYPE_KEY) -> None:
         """Remove item from record.

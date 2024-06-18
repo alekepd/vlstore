@@ -14,10 +14,17 @@ SIZE_LARGE: Final = int(2**16)
 MANY_SIZE: Final = 100
 
 
-def test_schunk_small_single() -> None:
+@mark.parametrize(
+    "start_aligned",
+    [
+        True,
+        False,
+    ],
+)
+def test_schunk_small_single(start_aligned: bool) -> None:
     """Test storing a single data point."""
     NAME: Final = "test_name"
-    storage = SChunkStore()
+    storage = SChunkStore(start_aligned=start_aligned)
 
     content = randbytes(SIZE_SMALL)
     storage.put(NAME, content)
@@ -42,7 +49,14 @@ def test_schunk_small_single() -> None:
         raise AssertionError()
 
 
-def test_schunk_small_many() -> None:
+@mark.parametrize(
+    "start_aligned",
+    [
+        True,
+        False,
+    ],
+)
+def test_schunk_small_many(start_aligned: bool) -> None:
     """Test storing many small files."""
     NAME: Final = "test_name"
     names: List[str] = []
@@ -50,7 +64,7 @@ def test_schunk_small_many() -> None:
     for x in range(MANY_SIZE):
         names.append(NAME + str(x))
         content.append(randbytes(SIZE_SMALL))
-    storage = SChunkStore()
+    storage = SChunkStore(start_aligned=start_aligned)
     for name, data in zip(names, content):
         storage.put(name, data)
     for name, data in zip(names, content):
@@ -59,7 +73,14 @@ def test_schunk_small_many() -> None:
         assert storage[name] == data
 
 
-def test_schunk_large_many_fused() -> None:
+@mark.parametrize(
+    "start_aligned",
+    [
+        True,
+        False,
+    ],
+)
+def test_schunk_large_many_fused(start_aligned: bool) -> None:
     """Test storing many large files and retrieving them using a fused get.
 
     All stored items are retrieved and compared.
@@ -70,7 +91,7 @@ def test_schunk_large_many_fused() -> None:
     for x in range(MANY_SIZE):
         names.append(NAME + str(x))
         content.append(randbytes(SIZE_LARGE))
-    storage = SChunkStore()
+    storage = SChunkStore(start_aligned=start_aligned)
     for name, data in zip(names, content):
         storage.put(name, data)
 
@@ -81,7 +102,14 @@ def test_schunk_large_many_fused() -> None:
         assert orig == recovered
 
 
-def test_schunk_large_many_fused_subset() -> None:
+@mark.parametrize(
+    "start_aligned",
+    [
+        True,
+        False,
+    ],
+)
+def test_schunk_large_many_fused_subset(start_aligned: bool) -> None:
     """Test storing many large files and retrieving them using a fused get.
 
     Every other stored item is retrieved and compared.
@@ -92,7 +120,7 @@ def test_schunk_large_many_fused_subset() -> None:
     for x in range(MANY_SIZE):
         names.append(NAME + str(x))
         content.append(randbytes(SIZE_LARGE))
-    storage = SChunkStore()
+    storage = SChunkStore(start_aligned=start_aligned)
     for name, data in zip(names, content):
         storage.put(name, data)
 
@@ -105,7 +133,14 @@ def test_schunk_large_many_fused_subset() -> None:
         assert orig == recovered
 
 
-def test_schunk_large_many_fused_subset_shuffle() -> None:
+@mark.parametrize(
+    "start_aligned",
+    [
+        True,
+        False,
+    ],
+)
+def test_schunk_large_many_fused_subset_shuffle(start_aligned: bool) -> None:
     """Test storing many large files and retrieving them using a fused get.
 
     Every other stored item is retrieved and compared in a shuffled order.
@@ -116,7 +151,7 @@ def test_schunk_large_many_fused_subset_shuffle() -> None:
     for x in range(MANY_SIZE):
         names.append(NAME + str(x))
         content.append(randbytes(SIZE_LARGE))
-    storage = SChunkStore()
+    storage = SChunkStore(start_aligned=start_aligned)
     data_pairing = dict(zip(names, content))
     for name, data in data_pairing.items():
         storage.put(name, data)
@@ -132,7 +167,14 @@ def test_schunk_large_many_fused_subset_shuffle() -> None:
         assert data_pairing[key] == recovered
 
 
-def test_schunk_large_many() -> None:
+@mark.parametrize(
+    "start_aligned",
+    [
+        True,
+        False,
+    ],
+)
+def test_schunk_large_many(start_aligned: bool) -> None:
     """Test storing many large files."""
     NAME: Final = "test_name"
     names: List[str] = []
@@ -140,7 +182,7 @@ def test_schunk_large_many() -> None:
     for x in range(MANY_SIZE):
         names.append(NAME + str(x))
         content.append(randbytes(SIZE_LARGE))
-    storage = SChunkStore()
+    storage = SChunkStore(start_aligned=start_aligned)
     for name, data in zip(names, content):
         storage.put(name, data)
     for name, data in zip(names, content):
@@ -149,7 +191,14 @@ def test_schunk_large_many() -> None:
         assert storage[name] == data
 
 
-def test_schunk_large_many_out() -> None:
+@mark.parametrize(
+    "start_aligned",
+    [
+        True,
+        False,
+    ],
+)
+def test_schunk_large_many_out(start_aligned: bool) -> None:
     """Test storing many large files using out argument."""
     NAME: Final = "test_name"
     names: List[str] = []
@@ -157,7 +206,7 @@ def test_schunk_large_many_out() -> None:
     for x in range(MANY_SIZE):
         names.append(NAME + str(x))
         content.append(randbytes(SIZE_LARGE))
-    storage = SChunkStore()
+    storage = SChunkStore(start_aligned=start_aligned)
     for name, data in zip(names, content):
         storage.put(name, data)
     for name, data in zip(names, content):
@@ -173,7 +222,10 @@ def test_schunk_large_many_out() -> None:
     ],
 )
 def test_schunk_random_many_get(get_method: Literal["slice", "chunk"]) -> None:
-    """Test to see if using random sizes and removing items causes issues."""
+    """Test to see if using random sizes and removing items causes issues.
+
+    Allocation is force to be start_aligned to allow multiple get methods.
+    """
     NAME: Final = "test_name"
     DROP_P: Final = 0.1
     names: List[str] = []
@@ -182,7 +234,7 @@ def test_schunk_random_many_get(get_method: Literal["slice", "chunk"]) -> None:
         names.append(NAME + str(x))
         content.append(randbytes(SIZE_LARGE + randint(1, SIZE_MEDIUM)))
 
-    storage = SChunkStore()
+    storage = SChunkStore(start_aligned=True)
     for name, data in zip(names, content):
         storage.put(name, data)
 
@@ -200,24 +252,38 @@ def test_schunk_random_many_get(get_method: Literal["slice", "chunk"]) -> None:
 
 
 @mark.parametrize(
-    "chunksize",
+    "chunksize,start_aligned",
     [
-        100,
-        200,
-        500,
-        int(1e5),
-        int(1e8),
-        DEFAULT_CHUNK_SIZE,
-        DEFAULT_CHUNK_SIZE - 10,
-        DEFAULT_CHUNK_SIZE + 10,
-        2 * DEFAULT_CHUNK_SIZE,
-        SIZE_LARGE,
-        SIZE_LARGE + 1,
-        SIZE_LARGE - 1,
+        (100, True),
+        (200, True),
+        (500, True),
+        (int(1e5), True),
+        (int(1e8), True),
+        (DEFAULT_CHUNK_SIZE, True),
+        (DEFAULT_CHUNK_SIZE - 10, True),
+        (DEFAULT_CHUNK_SIZE + 10, True),
+        (2 * DEFAULT_CHUNK_SIZE, True),
+        (SIZE_LARGE, True),
+        (SIZE_LARGE + 1, True),
+        (SIZE_LARGE - 1, True),
+        (2 * SIZE_LARGE + 10, True),
+        (100, False),
+        (200, False),
+        (500, False),
+        (int(1e5), False),
+        (int(1e8), False),
+        (DEFAULT_CHUNK_SIZE, False),
+        (DEFAULT_CHUNK_SIZE - 10, False),
+        (DEFAULT_CHUNK_SIZE + 10, False),
+        (2 * DEFAULT_CHUNK_SIZE, False),
+        (SIZE_LARGE, False),
+        (SIZE_LARGE + 1, False),
+        (SIZE_LARGE - 1, False),
+        (2 * SIZE_LARGE + 10, False),
     ],
 )
-def test_schunk_large_many_chunksize(chunksize: int) -> None:
-    """Test storing many large files."""
+def test_schunk_large_many_chunksize(chunksize: int, start_aligned: bool) -> None:
+    """Test storing many large files with different chunk sizes."""
     NAME: Final = "test_name"
     names: List[str] = []
     content: List[bytes] = []
@@ -225,7 +291,7 @@ def test_schunk_large_many_chunksize(chunksize: int) -> None:
         names.append(NAME + str(x))
         content.append(randbytes(SIZE_LARGE))
     s = _create_default_schunk(chunksize=chunksize)
-    storage = SChunkStore(location=s)
+    storage = SChunkStore(location=s, start_aligned=start_aligned)
     for name, data in zip(names, content):
         storage.put(name, data)
     for name, data in zip(names, content):
@@ -234,7 +300,14 @@ def test_schunk_large_many_chunksize(chunksize: int) -> None:
         assert storage[name] == data
 
 
-def test_schunk_manual_numpy() -> None:
+@mark.parametrize(
+    "start_aligned",
+    [
+        True,
+        False,
+    ],
+)
+def test_schunk_manual_numpy(start_aligned: bool) -> None:
     """Test if numpy arrays can be manually serialized."""
     from numpy.random import default_rng
     import numpy as np
@@ -247,7 +320,7 @@ def test_schunk_manual_numpy() -> None:
     SHAPE_2: Final = (62, 450, 53, 37)
     data2 = rng.random(SHAPE_2, dtype=np.float64)
 
-    storage = SChunkStore()
+    storage = SChunkStore(start_aligned=start_aligned)
     storage.put(NAME_1, data1.tobytes())
     storage.put(NAME_2, data2.tobytes())
 
@@ -269,7 +342,14 @@ def test_schunk_manual_numpy() -> None:
     assert (premade2 == data2).all()
 
 
-def test_schunk_manual_numpy_disk() -> None:
+@mark.parametrize(
+    "start_aligned",
+    [
+        True,
+        False,
+    ],
+)
+def test_schunk_manual_numpy_disk(start_aligned: bool) -> None:
     """Test if numpy arrays can be manually serialized.
 
     Uses on disk storage for underlying schunk.
@@ -287,7 +367,7 @@ def test_schunk_manual_numpy_disk() -> None:
     data2 = rng.random(SHAPE_2, dtype=np.float64)
 
     s = _create_default_schunk(filename=FILENAME)
-    storage = SChunkStore(location=s)
+    storage = SChunkStore(location=s, start_aligned=start_aligned)
     storage.put(NAME_1, data1.tobytes())
     storage.put(NAME_2, data2.tobytes())
 
