@@ -3,6 +3,7 @@ from typing import Final, List, Literal
 from pathlib import Path
 from random import randbytes, randint, uniform, shuffle
 from pytest import mark
+import blosc2
 from vlstore import SChunkStore
 from vlstore.store import DEFAULT_CHUNK_SIZE, _create_default_schunk
 
@@ -291,6 +292,60 @@ def test_schunk_large_many_chunksize(chunksize: int, start_aligned: bool) -> Non
         names.append(NAME + str(x))
         content.append(randbytes(SIZE_LARGE))
     s = _create_default_schunk(chunksize=chunksize)
+    storage = SChunkStore(location=s, start_aligned=start_aligned)
+    for name, data in zip(names, content):
+        storage.put(name, data)
+    for name, data in zip(names, content):
+        assert storage.get(name) == data
+    for name, data in zip(names, content):
+        assert storage[name] == data
+
+
+@mark.parametrize(
+    "chunksize,start_aligned,typesize",
+    [
+        (int(2**10), True, 1),
+        (int(2**10), True, 2),
+        (int(2**10), True, 4),
+        (int(2**10), True, 8),
+        (int(2**15), True, 1),
+        (int(2**15), True, 2),
+        (int(2**15), True, 4),
+        (int(2**15), True, 8),
+        (int(2**20), True, 1),
+        (int(2**20), True, 2),
+        (int(2**20), True, 4),
+        (int(2**20), True, 8),
+        (int(2**10), False, 1),
+        (int(2**10), False, 2),
+        (int(2**10), False, 4),
+        (int(2**10), False, 8),
+        (int(2**15), False, 1),
+        (int(2**15), False, 2),
+        (int(2**15), False, 4),
+        (int(2**15), False, 8),
+        (int(2**20), False, 1),
+        (int(2**20), False, 2),
+        (int(2**20), False, 4),
+        (int(2**20), False, 8),
+    ],
+)
+def test_schunk_large_many_typesize(
+    chunksize: int, start_aligned: bool, typesize: int
+) -> None:
+    """Test storing many large files with different type and chunk sizes."""
+    NAME: Final = "test_name"
+    names: List[str] = []
+    content: List[bytes] = []
+    for x in range(MANY_SIZE):
+        names.append(NAME + str(x))
+        content.append(randbytes(SIZE_LARGE))
+
+    cparams = blosc2.cparams_dflts.copy()
+    cparams["typesize"] = typesize
+    cparams["codec"] = blosc2.Codec.LZ4HC
+
+    s = _create_default_schunk(chunksize=chunksize, cparams=cparams)
     storage = SChunkStore(location=s, start_aligned=start_aligned)
     for name, data in zip(names, content):
         storage.put(name, data)
