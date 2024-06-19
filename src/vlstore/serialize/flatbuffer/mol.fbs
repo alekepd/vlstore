@@ -1,0 +1,16 @@
+// IDL file molecular data
+ 
+namespace FBSites;
+ 
+// single frame struct
+table FBFrame {
+  name: string;
+  nsites: int32;
+  ncodim: int32 = 3;
+  types: [int32];
+  masses: [float32];
+  positions: [float32];
+  forces: [float32];
+}
+
+root_type FBFrame;
