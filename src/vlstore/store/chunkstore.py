@@ -460,6 +460,7 @@ class _BoundChunkWriter:
             raise ValueError(
                 "Attempting to write block that is not a previous or next block."
             )
+        self.index = None
 
     def associate(self, index: int) -> None:
         """Associate with a new chunk.
