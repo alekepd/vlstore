@@ -388,6 +388,172 @@ class LocationIndex(Generic[_T_KEY]):
         return cls(locs=dict(formed))
 
 
+class _BoundChunkWriter:
+    """Cached chunk writer for SChunk objects.
+
+    This object is persistently associated with a selected chunk in an SChunk index.
+    Calling flush explicitly, or resassociating it, causes the stored data to be flushed
+    to the SChunk. Internal buffers remain allocated during reassociation, but are
+    wiped.
+
+    Current, it will only represent a chunk that is already allocated or immediately
+    after what is allocated.
+
+    Ideally, would support memoryview, but this is not simple before py 3.12. Instead,
+    use memoryview(ob.buffer) or access the buffer attribute directly.
+
+    Important attributes:
+    --------------------
+    backing:
+        SChunk instance that is modified.
+    buffer:
+
+    index:
+        Integer specifying which chunk we are associated with or None; None means
+        we are unassociated.
+
+    """
+
+    def __init__(
+        self, backing: blosc2.SChunk, index: Optional[int] = None, copy: bool = False
+    ) -> None:
+        """Initialize.
+
+        Arguments:
+        ---------
+        backing:
+            Schunk instance to write to.
+        index:
+            Either an integer specifying a chunk or None. If none, the instance is
+            considered unbound, and calling flush will not write anything.
+        copy:
+            Passed to schunk.update_data if modifying an existing chunk.
+
+        """
+        self.index: Optional[int] = index
+        self.backing = backing
+        self.buffer = memoryview(bytearray(self.backing.chunksize))
+        self.copy = copy
+        self.index = None
+        self._zeroes = memoryview(bytes(self.backing.chunksize))
+        if index is not None:
+            self.associate(index)
+
+    def flush(self) -> None:
+        """Flush cached data to disk.
+
+        Sets self.index to None, making the object no longer associated with
+        any chunk. If non-associated, this call does nothing.
+        """
+        if self.index is None:
+            return
+        # Check to see if we should update or append the data.
+        if self.index < self.backing.nchunks:
+            self.backing.update_data(self.index, self.buffer, copy=self.copy)
+        elif self.index == self.backing.nchunks:
+            self.backing.append_data(self.buffer)
+        else:
+            # this should not happen because index is validated at construction.
+            raise ValueError(
+                "Attempting to write block that is not a previous or next block."
+            )
+
+    def associate(self, index: int) -> None:
+        """Associate with a new chunk.
+
+        If the new index is different than the internal index, the current buffer
+        is flushed to the underlying SChunk before reassociating. If the index
+        is the same as the internal index, no flushing is done.
+
+        If the new chunk already exists in the SCHunk, its content is retrieved
+        and placed in the buffer. If the new chunk does not exist, but is only
+        one above the existing chunk range, the array is initialized with zeroes.
+        If larger, a ValueError is raised.
+
+        Arguments:
+        ---------
+        index:
+            New chunk index to associate with.
+
+        Returns:
+        -------
+        None
+
+        """
+        if self.index is index:
+            return
+
+        if self.index is not None:
+            self.flush()
+            # flush must happen before changing index
+
+        self.index = index
+
+        if self.index < self.backing.nchunks:
+            # we are using a chunk in the backing, get its contents
+            self.backing.decompress_chunk(self.index, dst=self.buffer)
+        elif self.index == self.backing.nchunks:
+            # we are using a chunk not in the backing, init with zeroes
+            self.buffer[:] = self._zeroes
+        else:
+            raise ValueError(
+                "Cannot be associated with a block that is not a previous or "
+                "next block."
+            )
+
+    def write_through(self, index: int, content: memoryview) -> None:
+        if index == self.index:
+            # this operation will invalidate whatever content was present
+            self.index = None
+            self.buffer[:] = self._zeroes
+        _write_block_to_schunk(
+            index=index, content=content, schunk=self.backing, copy=self.copy
+        )
+
+
+def _write_block_to_schunk(
+    index: Optional[int],
+    content: memoryview,
+    schunk: blosc2.SChunk,
+    copy: bool = False,
+) -> None:
+    """Write a full block/chunk to SChunk file.
+
+    If the specified chunk location exists, the its content is overwritten. If
+    the specified index is one more than what is present in the SChunk, the new
+    data is appended. If the specified index is larger, a ValueError is raised.
+
+    Arguments:
+    ---------
+    index:
+        Block index to be (over)written. See function description.
+    content:
+        memoryview of content to place in block location. Must be the correct size
+        to exactly fill the entire block.
+    schunk:
+        SChunk instance to write to.
+    copy:
+        Passed to update_data if an update operation is internally selected.
+
+    Returns:
+    -------
+    None
+
+    """
+    # e.g. if nchunks if 4
+    # we have chunks 0 1 2 3
+    if index is None:
+        return
+    if index < schunk.nchunks:
+        schunk.update_data(index, content, copy=copy)
+    elif index == schunk.nchunks:
+        schunk.append_data(content)
+    else:
+        raise ValueError(
+            "Attempting to write block that is not a previous or next block."
+        )
+
+
 class SChunkStore:
     """Stores byte sequences using an underlying SChunk.
 
@@ -477,7 +643,14 @@ class SChunkStore:
                 raise ValueError("Could not use file location.")
 
         # must happen after backing is initialized
-        self.transfer_buffer = memoryview(bytearray(self.chunksize))
+
+        # buffer for chunk-wise reading
+        self._transfer_buffer = memoryview(bytearray(self.chunksize))
+
+        # buffered object for writing
+        self._in_progress_block = _BoundChunkWriter(backing=self.backing)
+
+        # used to quickly zero out other buffers
         self._zero_buffer = memoryview(bytes(self.chunksize))
 
     @property
@@ -495,8 +668,7 @@ class SChunkStore:
         """Return list of all used storage locations."""
         return list(self.lookup.values())
 
-    # the mccabe complexity is high here. Target for future refactor.
-    def put(  # noqa: C901
+    def put(
         self,
         key: TYPE_KEY,
         value: TYPE_INPUTDATA,
@@ -527,71 +699,113 @@ class SChunkStore:
             self.disown(key)
         elif (not overwrite) and already_exists:
             raise ValueError(f"Entry already exists for {key!r}.")
-
-        # store value
+        # check value length
         value_view = bytewise_memoryview(value)
         value_size = len(value_view)
         if value_size % self.backing.typesize != 0:
             raise ValueError("Storage object size not divisible by typesize.")
         if value_size == 0:
             raise ValueError("Cannot store length-0 bytes.")
-
-        # get required chunks from lookup methods
+        # get required locations we will write to
         location = self.lookup.plan(
             value_size, start_aligned=self.start_aligned, block_size=self.chunksize
         )
         location_chunks = location.block_split()
-
+        # break data into those chunk sizes
         chunk_views = _chunk_memoryview(
             sizes=[len(x) for x in location_chunks], target=value_view
         )
-
-        # then go from views to prepped.
-        # First and last chunk need special treatment.
-        # actually, only the first and last need any consideration.
-        # there is always at least one chunk
-        if len(chunk_views[0]) != self.chunksize:
-            # if location_chunks[0].start != 0:
-            # deal with partial chunk.
-            chunk = chunk_views.pop(0)
-            chunk_location = location_chunks.pop(0)
-            if chunk_location.start_offset == 0:
-                self._init_buffer()
-                self.transfer_buffer[: len(chunk)] = chunk
-                self.backing.append_data(self.transfer_buffer)
-            else:
-                self.backing.decompress_chunk(
-                    chunk_location.start_block, dst=self.transfer_buffer
-                )
-                start = chunk_location.start_offset
-                self.transfer_buffer[start : start + len(chunk_location)] = chunk
-            # usage of copy here is unclear
-            # if no copy is made, it seems that the transfer buffer would be
-            # referenced by the underlying schunk?
-            self.backing.update_data(
-                chunk_location.start_block, data=self.transfer_buffer, copy=True
-            )
-
-        # Continue if there are further chunks to write.
-        if chunk_views:
-            # Deal with full-size middle chunk
-            # if we have no middle chunks, this loop will do nothing
-            for chunk in chunk_views[:-1]:
-                self.backing.append_data(chunk)
-
-            # deal with final chunk, need to consider if it needs to be padded.
-            chunk = chunk_views[-1]
-            if len(chunk) == self.chunksize:
-                self.backing.append_data(chunk)
-            else:
-                self._init_buffer()
-                self.transfer_buffer[: len(chunk)] = chunk
-                self.backing.append_data(self.transfer_buffer)
+        # write the data
+        self._write_views(views=chunk_views, locations=location_chunks)
 
         if check and location.end - location.start != value_size:
             raise ValueError("Allocated slot is the wrong size for the chunk.")
 
+        # record the location
         self.lookup[key] = location
+
+    def _write_views(
+        self, views: Iterable[memoryview], locations: Iterable[Location]
+    ) -> None:
+        """Write views to disk at given locations.
+
+        Arguments:
+        ---------
+        views:
+            memoryview instances that will be written. They must match in size
+            to the entries in locations.
+        locations:
+            Location instances giving where writes will happen. All entries should
+            occupy 1 chunk, sorted from low to high start points, and must be
+            contiguous: there must be no gap between the end of one instance and
+            the start of the next.
+
+        Returns:
+        -------
+        None
+
+        Notes:
+        -----
+        Writing is the most complex operation in this class. Data must be broken
+        up and written obeying chunk sizes; furthermore, to avoid fragmentation,
+        we must cache non-full chunks _between_ writes. Chunking is performed before
+        this function, and this function takes care of writing/caching. This function
+        assumes that we are only ever adding blocks to the end of the underlying schunk.
+        Due to caching, after this function exist data may not yet be written to the
+        underlying schunk; to be sure, call self._flush_block_cache().
+
+        """
+        # First and last views need special treatment. We assume there is always at
+        # least one view.
+        working_locations = list(locations)
+        working_views = list(views)
+
+        # Check is the first chunk is a partial chunk, which needs special treatment
+        if len(working_views[0]) != self.chunksize:
+            # remove said entry so we don't double process
+            chunk = working_views.pop(0)
+            chunk_location = working_locations.pop(0)
+
+            # associate writer with chunk
+            # this may carry over older data that is currently cached
+            self._in_progress_block.associate(chunk_location.start_block)
+
+            buffer_end_mark = (
+                chunk_location.end_offset if chunk_location.end_offset else None
+            )
+            # store content in buffered writer
+            self._in_progress_block.buffer[
+                chunk_location.start_offset : buffer_end_mark
+            ] = chunk
+            # flush writer if we are at the end of the block
+            if buffer_end_mark is None:
+                self._in_progress_block.flush()
+
+        # Continue if there are further chunks to write.
+        if working_views:
+            # if we are writing more blocks, we its easiest to flush
+            # the cache first. This should happen automatically as well.
+            self._in_progress_block.flush()
+
+            # Deal with full-size middle chunk
+            # if we have no middle chunks, this loop will do nothing
+            for chunk, chunk_location in zip(
+                working_views[:-1], working_locations[:-1]
+            ):
+                self._in_progress_block.write_through(
+                    index=chunk_location.start_block, content=chunk
+                )
+
+            # deal with final chunk, need to consider if it needs to be padded.
+            chunk = working_views[-1]
+            chunk_location = working_locations[-1]
+            if len(chunk) == self.chunksize:
+                self._in_progress_block.write_through(
+                    index=chunk_location.start_block, content=chunk
+                )
+            else:
+                self._in_progress_block.associate(index=chunk_location.start_block)
+                self._in_progress_block.buffer[: len(chunk)] = chunk
 
     @overload
     def get(
@@ -662,6 +876,10 @@ class SChunkStore:
 
         """
         location = self.lookup[key]
+        # if we are looking up content that is currently in the cached writer,
+        # flush the cache
+        if (location.end_block - 1) == self._in_progress_block.index:
+            self._in_progress_block.flush()
         if return_location:
             return location
         if method == "slice":
@@ -732,11 +950,11 @@ class SChunkStore:
             start = write_index * location.block_size
             end = (write_index + 1) * location.block_size
             self.backing.decompress_chunk(chunk_index, dst=view[start:end])
-        self.backing.decompress_chunk(location.end_block - 1, dst=self.transfer_buffer)
+        self.backing.decompress_chunk(location.end_block - 1, dst=self._transfer_buffer)
         if location.end_offset == 0:
-            view[end:] = self.transfer_buffer[:]
+            view[end:] = self._transfer_buffer[:]
         else:
-            view[end:] = self.transfer_buffer[: location.end_offset]
+            view[end:] = self._transfer_buffer[: location.end_offset]
         return out
 
     def fused_size(self, keys: Iterable[TYPE_KEY], *, presorted: bool = False) -> int:
@@ -814,6 +1032,10 @@ class SChunkStore:
             start_offset=first.start_offset,
             end_offset=last.end_offset,
         )
+        # if we are looking up content that is currently in the cached writer,
+        # flush the cache
+        if (proxy_location.end_block - 1) == self._in_progress_block.index:
+            self._in_progress_block.flush()
         collective_data = self._slice_load(location=proxy_location, out=out)
         slices: List[slice] = []
         offset = first.start
@@ -856,7 +1078,12 @@ class SChunkStore:
 
         Other writes _should_ already be synchronous.
         """
+        # flush any chunk we are in the middle of creating
+        self._in_progress_block.flush()
+
+        # write metadata
         self._write_lookup()
+
         # should some file be closed? blosc2 documents seem to
         # say no. Perhaps all writes are synchronous.
 
@@ -873,7 +1100,7 @@ class SChunkStore:
         """
         # zero out transfer buffer, this seems to be the most direct way
         # to do so to a bytearray.
-        self.transfer_buffer[:] = self._zero_buffer
+        self._transfer_buffer[:] = self._zero_buffer
 
     def __delitem__(self, key: TYPE_KEY) -> None:
         """Remove item from record.
