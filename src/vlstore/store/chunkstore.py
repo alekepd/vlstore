@@ -484,7 +484,7 @@ class _BoundChunkWriter:
         None
 
         """
-        if self.index is index:
+        if self.index == index:
             return
 
         if self.index is not None:
