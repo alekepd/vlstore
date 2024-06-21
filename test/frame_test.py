@@ -19,7 +19,6 @@ def test() -> None:
     FILENAME: Final = "mol.store"
     storage = SChunkStore(chunksize=int(2**21),location=FILENAME, start_aligned=False)
     with Depot(codec=BackedAtomicDataCodec, backing=storage) as d:
-        #frames = {}
         for ident, (pos_frame, force_frame) in tqdm(enumerate(zip(POSITIONS,FORCES))):
             name = NAME + str(ident)
             new = BackedAtomicData.from_values(
@@ -30,9 +29,9 @@ def test() -> None:
                 positions=pos_frame,
                 forces=force_frame,
             )
-            # frames.update({name: new})
 
             d.put(name, new)
+        print(d.backing.backing.cratio)
 
     with Depot(codec=BackedAtomicDataCodec, backing=storage) as d:
         for ident, (pos_frame, force_frame) in tqdm(enumerate(zip(POSITIONS,FORCES))):
