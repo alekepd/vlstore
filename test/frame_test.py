@@ -1,6 +1,7 @@
 """Test flatbuffer record serialization."""
 from typing import Dict
 import numpy as np
+from numpy.random import randint
 from random import choice, shuffle
 from vlstore.serialize import BackedAtomicDataCodec, BackedAtomicData
 from vlstore.store import Depot, SChunkStore
@@ -53,9 +54,12 @@ def test_backed_atomic_data_multi() -> None:
     """
     N_ITER = 300
     NAME = "frame_"
-    M1, M2 = "MOL_A", "MOL_B"
-    NSITES = {M1: 1200, M2: 882}
-    TYPES = {x: np.arange(NSITES[x], dtype=np.int32) for x in NSITES.keys()}
+    M1, M2, M3 = "MOL_A", "MOL_B", "MOL_C"
+    NSITES = {M1: 1200, M2: 882, M3: 100}
+    TYPES = {
+        x: randint(low=0, high=20, size=NSITES[x], dtype=np.int32)  # noqa: NPY002
+        for x in NSITES.keys()
+    }
     MASSES = {
         k: np.random.rand(v).astype(np.float32)  # noqa: NPY002
         for k, v in NSITES.items()
