@@ -8,73 +8,105 @@ from .FBSites import FBFrame
 from ...store.util import bytewise_memoryview
 from .._types import Codec, T_OUT, TYPE_OUT, TYPE_RETURNDATA, TYPE_INPUTDATA
 
+# Specifies default starting size for builder
 INI_SIZE: Final = int(2**19)
+# buffer object that is used to create flatbuffer objects if none is given
 _builder = flatbuffers.Builder(INI_SIZE)
 
 
 @dataclass(frozen=True)
 class BackedAtomicData:
-    """Friendly view into FBFrame.
+    """Frame of particle data.
 
-    Based on atomic data.
-    github.com/ClementiGroup/mlcg-tools/blob/
-    bc895b0916ca59fb62361be1a27a700816450c2e/mlcg/
-    data/atomic_data.py#L22
+    This object is backed by an FBFrame instance; most attributes are properties
+    which access and transform the underlying data. It is also the most convenient
+    way to create an FBFrame instance.
+
+    Note that __init__ takes an already formed FBFrame instance; for easy creation,
+    see alternative init .from_values.
+
+    Attributes:
+    ----------
+    raw:
+        Buffer containing memory used by underlying FBFrame.
+    fb:
+        Underlying FBFrame instance.
+    name:
+        String identifying record.
+    n_sites:
+        Number of sites or particles in frame.
+    masses:
+        Masses present in system; numpy float32 array.
+    atom_types:
+        Masses present in system; numpy float32 array.
+    pos:
+        Positions of frames in system; numpy float32 array of
+        shape (n_particles,n_codims). Codims is almost always 3.
+    forces
+        Forces of frames in system; numpy float32 array of
+        shape (n_particles,n_codims). Codims is almost always 3.
+
     """
 
     raw: memoryview
-    FB: FBFrame.FBFrame
+    fb: FBFrame.FBFrame
 
     @property
     def name(self) -> int:
         """Name of frame."""
-        return self.FB.Name()
+        return self.fb.Name()
 
     @property
     def n_sites(self) -> int:
         """Number of sites in frame."""
-        return self.FB.Nsites()
+        return self.fb.Nsites()
 
     @property
     def masses(self) -> np.ndarray:
-        """Types of sites in frame."""
-        return self.FB.MassesAsNumpy()
+        """Masses of sites in frame.
+
+        float32 numpy.ndarray of shape (self.n_sites,).
+        """
+        return self.fb.MassesAsNumpy()
 
     @property
     def atom_types(self) -> np.ndarray:
-        """Types of sites in frame."""
-        return self.FB.TypesAsNumpy()
+        """Types of sites in frame.
+
+        float32 numpy.ndarray of shape (self.n_sites,).
+        """
+        return self.fb.TypesAsNumpy()
 
     @property
     def pos(self) -> np.ndarray:
-        """Portions in frame.
+        """Positions in frame.
 
-        shape:
-        (n_atoms * n_structures=1, 3)
+        float32 numpy.ndarray of shape (self.n_sites, codim). Codim is almost
+        always 3; see FBFrame for more information.
         """
-        data = self.FB.PositionsAsNumpy()
-        ncodim = self.FB.Ncodim()
+        data = self.fb.PositionsAsNumpy()
+        ncodim = self.fb.Ncodim()
         return data.reshape((self.n_sites, ncodim))
 
     @property
     def forces(self) -> np.ndarray:
         """Forces in frame.
 
-        shape:
-        (n_atoms * n_structures=1, 3)
+        float32 numpy.ndarray of shape (self.n_sites, codim). Codim is almost
+        always 3; see FBFrame for more information.
         """
-        data = self.FB.ForcesAsNumpy()
-        ncodim = self.FB.Ncodim()
+        data = self.fb.ForcesAsNumpy()
+        ncodim = self.fb.Ncodim()
         return data.reshape((self.n_sites, ncodim))
 
     @classmethod
     def from_values(cls, **kwargs) -> "BackedAtomicData":  # noqa
-        """Create instance by passing values.
+        """Create instance by passing defining values.
 
         Values are transformed into an underlying flatbuffer object and used
         to create an instance.
 
-        (Likely arguments, see create_fbframe_buffer for details)
+        (The following are likely arguments, see create_fbframe_buffer for details)
 
         Arguments:
         ---------
@@ -125,6 +157,11 @@ def _pack_BackedAtomicData(
     target: BackedAtomicData,
     out: Optional[TYPE_OUT] = None,
 ) -> Union[TYPE_INPUTDATA, TYPE_OUT]:
+    """Serialize BackedAtomicData instance.
+
+    This routing simply serves the buffer underlying target. If out is
+    not provided, note that this is effectively a view.
+    """
     data = target.raw
     if out is None:
         return data.toreadonly()
@@ -135,10 +172,15 @@ def _pack_BackedAtomicData(
 
 
 def _unpack_BackedAtomicData(data: TYPE_RETURNDATA) -> BackedAtomicData:
+    """Create BackedAtomicData from buffer.
+
+    Creates an FBFrame instance and then a BackedAtomicData instance.
+    """
     view = bytewise_memoryview(data)
     return BackedAtomicData(view, FBFrame.FBFrame.GetRootAs(view, 0))
 
 
+# This is used to pack and unpack BackedAtomicData instances.
 BackedAtomicDataCodec = Codec(
     pack=_pack_BackedAtomicData, unpack=_unpack_BackedAtomicData
 )
@@ -154,7 +196,41 @@ def create_fbframe_buffer(
     builder: Optional[flatbuffers.Builder] = None,
     check: bool = True,
 ) -> bytes:
-    """Create a bytes object containing FBFrame."""
+    """Create a bytes object containing FBFrame.
+
+    Note that some of the argument names disagree in formatting relative to
+    BackedAtomicData; Consider using BackedAtomicData.from_values instead.
+
+    This method is slow because the FlatBuffer python interface is slow.
+
+    Arguments:
+    ---------
+    name:
+        String identifying record.
+    atom_types:
+        Types present in frame; Sequence of ints of length nsites.
+    masses:
+        Masses present in frame; Sequence of floats of length nsites.
+    nsites:
+        Number of sites present; dictates acceptable shapes of other arguments.
+    positions:
+        Positions of frames in system; numpy float32 array of
+        shape (n_particles,n_codims). Codims is almost always 3.
+    forces:
+        Forces of frames in system; numpy float32 array of
+        shape (n_particles,n_codims). Codims is almost always 3.
+    builder:
+        flatbuffers.Builder instance or None; if None, a built in instance
+        is used.
+    check:
+        Whether to run basic checks on argument shape and types.
+
+
+    Returns:
+    -------
+    Bytes object that can be used to create an FBFrame instance.
+
+    """
     # should validate argument type/shape
 
     if builder is None:
@@ -162,15 +238,26 @@ def create_fbframe_buffer(
 
     if check:
         if len(forces.shape) != 2:
-            raise ValueError()
+            raise ValueError(
+                "Forces must be 2 dimensional (this object represents a single frame."
+            )
         if len(positions.shape) != 2:
-            raise ValueError()
-        if positions.shape[0] != len(masses):
-            raise ValueError()
-        if positions.shape[0] != len(atom_types):
-            raise ValueError()
+            raise ValueError(
+                "Positions must be 2 dimensional (this object represents a single "
+                "frame."
+            )
+        if positions.shape[0] != nsites:
+            raise ValueError(
+                "Positions have the wrong number of entries; "
+                f"Expected {nsites}, found {positions.shape[0]}."
+            )
+        if forces.shape[0] != nsites:
+            raise ValueError(
+                "Forces have the wrong number of entries; "
+                f"Expected {nsites}, found {forces.shape[0]}."
+            )
         if positions.shape != forces.shape:
-            raise ValueError()
+            raise ValueError("Forces and positions have differing shapes.")
 
     nsites = forces.shape[0]
 
