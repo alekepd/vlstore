@@ -52,9 +52,9 @@ class BackedAtomicData:
     fb: FBFrame.FBFrame
 
     @property
-    def name(self) -> int:
+    def name(self) -> str:
         """Name of frame."""
-        return self.fb.Name()
+        return self.fb.Name().decode("utf-8")
 
     @property
     def n_sites(self) -> int:
@@ -263,7 +263,7 @@ def create_fbframe_buffer(
 
     type_offset = add_types_vector(builder, data=atom_types, fbclass=FBFrame)
 
-    type_offset = add_masses_vector(builder, data=masses, fbclass=FBFrame)
+    masses_offset = add_masses_vector(builder, data=masses, fbclass=FBFrame)
 
     positions_offset = add_positions_vector(
         builder, data=positions.flatten().tolist(), fbclass=FBFrame
@@ -280,7 +280,7 @@ def create_fbframe_buffer(
     FBFrame.AddName(builder, name_string)
     FBFrame.AddNsites(builder, nsites)
     FBFrame.AddTypes(builder, type_offset)
-    FBFrame.AddMasses(builder, type_offset)
+    FBFrame.AddMasses(builder, masses_offset)
     FBFrame.AddPositions(builder, positions_offset)
     FBFrame.AddForces(builder, forces_offset)
 
