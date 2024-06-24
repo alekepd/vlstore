@@ -37,7 +37,9 @@ DEFAULT_CHUNK_SIZE: Final = int(2**22)
 
 _default_cparams = blosc2.cparams_dflts.copy()
 _default_cparams["typesize"] = 1
-_default_cparams["codec"] = blosc2.Codec.LZ4HC
+_default_cparams["codec"] = blosc2.Codec.ZSTD
+_default_cparams["clevel"] = 1
+
 # setting ["use_dict"] = 1 causes bugs.
 _default_dparams = blosc2.dparams_dflts.copy()
 
