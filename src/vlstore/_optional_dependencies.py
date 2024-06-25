@@ -10,7 +10,7 @@ except ImportError:
 
 
 try:
-    import flatbuffers # type: ignore
+    import flatbuffers  # type: ignore
 
     has_flatbuffers = True
 except ImportError:
