@@ -8,7 +8,7 @@ Fast tools for saving variable-length records on disk.
 
 Data-based applications often read memory many times from disk. Numerical data is often stored in array format, which requires that each element be the same size. When the underlying data is built of variable-sized parts, this causes friction. `vlstore` provides tools to quickly store and load variable length records from a compressed archive.
 
-This project has not been benchmarked against more established strategies. Before use, you should consider the cost of loading your data from disc using tools like [msgpack](https://github.com/msgpack/msgpack), [h5py](https://github.com/h5py/h5py), or database options.
+This project has not been benchmarked against more established strategies. Before use, you should consider the cost of loading your data from disk using tools like [msgpack](https://github.com/msgpack/msgpack), [h5py](https://github.com/h5py/h5py), or database options.
 
 ## Key Features
 
