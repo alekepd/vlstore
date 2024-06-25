@@ -20,7 +20,7 @@ def test_backed_atomic_data_single_groundtruth() -> None:
     FORCES = np.random.rand(N_ITER, NSITES, 3).astype(np.float32)  # noqa: NPY002
     MASSES = np.random.rand(NSITES).astype(np.float32)  # noqa: NPY002
 
-    storage = SChunkStore(chunksize=int(2**22), location=None, start_aligned=False)
+    storage = SChunkStore(chunksize=int(2**22), location=None, alignment="no_cross")
     with Depot(codec=BackedAtomicDataCodec, backing=storage) as d:
         for ident, (pos_frame, force_frame) in enumerate(zip(POSITIONS, FORCES)):
             name = NAME + str(ident)
@@ -65,7 +65,7 @@ def test_backed_atomic_data_multi() -> None:
         for k, v in NSITES.items()
     }
 
-    storage = SChunkStore(chunksize=int(2**22), location=None, start_aligned=False)
+    storage = SChunkStore(chunksize=int(2**22), location=None, alignment="no_cross")
     record: Dict[str, BackedAtomicData] = {}
     with Depot(codec=BackedAtomicDataCodec, backing=storage) as d:
         for ident in range(N_ITER):

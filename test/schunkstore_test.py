@@ -3,9 +3,16 @@ from typing import Final, List, Literal
 from pathlib import Path
 from random import randbytes, randint, uniform, shuffle
 from pytest import mark
-import blosc2
+import blosc2  # type: ignore
 from vlstore import SChunkStore
-from vlstore.store import DEFAULT_CHUNK_SIZE, _create_default_schunk
+from vlstore.store import (
+    DEFAULT_CHUNK_SIZE,
+    TYPE_ALIGNMENT,
+    NOCROSS_ALIGNMENT,
+    CONTIGUOUS_ALIGNMENT,
+    START_ALIGNMENT,
+    _create_default_schunk,
+)
 
 # size of writes in bytes
 SIZE_SMALL: Final = 500
@@ -16,16 +23,17 @@ MANY_SIZE: Final = 100
 
 
 @mark.parametrize(
-    "start_aligned",
+    "alignment",
     [
-        True,
-        False,
+        NOCROSS_ALIGNMENT,
+        CONTIGUOUS_ALIGNMENT,
+        START_ALIGNMENT,
     ],
 )
-def test_schunk_small_single(start_aligned: bool) -> None:
+def test_schunk_small_single(alignment: TYPE_ALIGNMENT) -> None:
     """Test storing a single data point."""
     NAME: Final = "test_name"
-    storage = SChunkStore(start_aligned=start_aligned)
+    storage = SChunkStore(alignment=alignment)
 
     content = randbytes(SIZE_SMALL)
     storage.put(NAME, content)
@@ -51,13 +59,14 @@ def test_schunk_small_single(start_aligned: bool) -> None:
 
 
 @mark.parametrize(
-    "start_aligned",
+    "alignment",
     [
-        True,
-        False,
+        NOCROSS_ALIGNMENT,
+        CONTIGUOUS_ALIGNMENT,
+        START_ALIGNMENT,
     ],
 )
-def test_schunk_small_many(start_aligned: bool) -> None:
+def test_schunk_small_many(alignment: TYPE_ALIGNMENT) -> None:
     """Test storing many small files."""
     NAME: Final = "test_name"
     names: List[str] = []
@@ -65,7 +74,7 @@ def test_schunk_small_many(start_aligned: bool) -> None:
     for x in range(MANY_SIZE):
         names.append(NAME + str(x))
         content.append(randbytes(SIZE_SMALL))
-    storage = SChunkStore(start_aligned=start_aligned)
+    storage = SChunkStore(alignment=alignment)
     for name, data in zip(names, content):
         storage.put(name, data)
     for name, data in zip(names, content):
@@ -75,13 +84,14 @@ def test_schunk_small_many(start_aligned: bool) -> None:
 
 
 @mark.parametrize(
-    "start_aligned",
+    "alignment",
     [
-        True,
-        False,
+        NOCROSS_ALIGNMENT,
+        CONTIGUOUS_ALIGNMENT,
+        START_ALIGNMENT,
     ],
 )
-def test_schunk_large_many_fused(start_aligned: bool) -> None:
+def test_schunk_large_many_fused(alignment: TYPE_ALIGNMENT) -> None:
     """Test storing many large files and retrieving them using a fused get.
 
     All stored items are retrieved and compared.
@@ -92,7 +102,7 @@ def test_schunk_large_many_fused(start_aligned: bool) -> None:
     for x in range(MANY_SIZE):
         names.append(NAME + str(x))
         content.append(randbytes(SIZE_LARGE))
-    storage = SChunkStore(start_aligned=start_aligned)
+    storage = SChunkStore(alignment=alignment)
     for name, data in zip(names, content):
         storage.put(name, data)
 
@@ -104,13 +114,14 @@ def test_schunk_large_many_fused(start_aligned: bool) -> None:
 
 
 @mark.parametrize(
-    "start_aligned",
+    "alignment",
     [
-        True,
-        False,
+        NOCROSS_ALIGNMENT,
+        CONTIGUOUS_ALIGNMENT,
+        START_ALIGNMENT,
     ],
 )
-def test_schunk_large_many_fused_subset(start_aligned: bool) -> None:
+def test_schunk_large_many_fused_subset(alignment: TYPE_ALIGNMENT) -> None:
     """Test storing many large files and retrieving them using a fused get.
 
     Every other stored item is retrieved and compared.
@@ -121,7 +132,7 @@ def test_schunk_large_many_fused_subset(start_aligned: bool) -> None:
     for x in range(MANY_SIZE):
         names.append(NAME + str(x))
         content.append(randbytes(SIZE_LARGE))
-    storage = SChunkStore(start_aligned=start_aligned)
+    storage = SChunkStore(alignment=alignment)
     for name, data in zip(names, content):
         storage.put(name, data)
 
@@ -135,13 +146,14 @@ def test_schunk_large_many_fused_subset(start_aligned: bool) -> None:
 
 
 @mark.parametrize(
-    "start_aligned",
+    "alignment",
     [
-        True,
-        False,
+        NOCROSS_ALIGNMENT,
+        CONTIGUOUS_ALIGNMENT,
+        START_ALIGNMENT,
     ],
 )
-def test_schunk_large_many_fused_subset_shuffle(start_aligned: bool) -> None:
+def test_schunk_large_many_fused_subset_shuffle(alignment: TYPE_ALIGNMENT) -> None:
     """Test storing many large files and retrieving them using a fused get.
 
     Every other stored item is retrieved and compared in a shuffled order.
@@ -152,7 +164,7 @@ def test_schunk_large_many_fused_subset_shuffle(start_aligned: bool) -> None:
     for x in range(MANY_SIZE):
         names.append(NAME + str(x))
         content.append(randbytes(SIZE_LARGE))
-    storage = SChunkStore(start_aligned=start_aligned)
+    storage = SChunkStore(alignment=alignment)
     data_pairing = dict(zip(names, content))
     for name, data in data_pairing.items():
         storage.put(name, data)
@@ -169,13 +181,14 @@ def test_schunk_large_many_fused_subset_shuffle(start_aligned: bool) -> None:
 
 
 @mark.parametrize(
-    "start_aligned",
+    "alignment",
     [
-        True,
-        False,
+        NOCROSS_ALIGNMENT,
+        CONTIGUOUS_ALIGNMENT,
+        START_ALIGNMENT,
     ],
 )
-def test_schunk_large_many(start_aligned: bool) -> None:
+def test_schunk_large_many(alignment: TYPE_ALIGNMENT) -> None:
     """Test storing many large files."""
     NAME: Final = "test_name"
     names: List[str] = []
@@ -183,7 +196,7 @@ def test_schunk_large_many(start_aligned: bool) -> None:
     for x in range(MANY_SIZE):
         names.append(NAME + str(x))
         content.append(randbytes(SIZE_LARGE))
-    storage = SChunkStore(start_aligned=start_aligned)
+    storage = SChunkStore(alignment=alignment)
     for name, data in zip(names, content):
         storage.put(name, data)
     for name, data in zip(names, content):
@@ -193,13 +206,14 @@ def test_schunk_large_many(start_aligned: bool) -> None:
 
 
 @mark.parametrize(
-    "start_aligned",
+    "alignment",
     [
-        True,
-        False,
+        NOCROSS_ALIGNMENT,
+        CONTIGUOUS_ALIGNMENT,
+        START_ALIGNMENT,
     ],
 )
-def test_schunk_large_many_out(start_aligned: bool) -> None:
+def test_schunk_large_many_out(alignment: TYPE_ALIGNMENT) -> None:
     """Test storing many large files using out argument."""
     NAME: Final = "test_name"
     names: List[str] = []
@@ -207,7 +221,7 @@ def test_schunk_large_many_out(start_aligned: bool) -> None:
     for x in range(MANY_SIZE):
         names.append(NAME + str(x))
         content.append(randbytes(SIZE_LARGE))
-    storage = SChunkStore(start_aligned=start_aligned)
+    storage = SChunkStore(alignment=alignment)
     for name, data in zip(names, content):
         storage.put(name, data)
     for name, data in zip(names, content):
@@ -225,7 +239,7 @@ def test_schunk_large_many_out(start_aligned: bool) -> None:
 def test_schunk_random_many_get(get_method: Literal["slice", "chunk"]) -> None:
     """Test to see if using random sizes and removing items causes issues.
 
-    Allocation is force to be start_aligned to allow multiple get methods.
+    Allocation is force to be aligned to allow multiple get methods.
     """
     NAME: Final = "test_name"
     DROP_P: Final = 0.1
@@ -235,7 +249,7 @@ def test_schunk_random_many_get(get_method: Literal["slice", "chunk"]) -> None:
         names.append(NAME + str(x))
         content.append(randbytes(SIZE_LARGE + randint(1, SIZE_MEDIUM)))
 
-    storage = SChunkStore(start_aligned=True)
+    storage = SChunkStore(alignment=START_ALIGNMENT)
     for name, data in zip(names, content):
         storage.put(name, data)
 
@@ -253,37 +267,50 @@ def test_schunk_random_many_get(get_method: Literal["slice", "chunk"]) -> None:
 
 
 @mark.parametrize(
-    "chunksize,start_aligned",
+    "chunksize,alignment",
     [
-        (100, True),
-        (200, True),
-        (500, True),
-        (int(1e5), True),
-        (int(1e8), True),
-        (DEFAULT_CHUNK_SIZE, True),
-        (DEFAULT_CHUNK_SIZE - 10, True),
-        (DEFAULT_CHUNK_SIZE + 10, True),
-        (2 * DEFAULT_CHUNK_SIZE, True),
-        (SIZE_LARGE, True),
-        (SIZE_LARGE + 1, True),
-        (SIZE_LARGE - 1, True),
-        (2 * SIZE_LARGE + 10, True),
-        (100, False),
-        (200, False),
-        (500, False),
-        (int(1e5), False),
-        (int(1e8), False),
-        (DEFAULT_CHUNK_SIZE, False),
-        (DEFAULT_CHUNK_SIZE - 10, False),
-        (DEFAULT_CHUNK_SIZE + 10, False),
-        (2 * DEFAULT_CHUNK_SIZE, False),
-        (SIZE_LARGE, False),
-        (SIZE_LARGE + 1, False),
-        (SIZE_LARGE - 1, False),
-        (2 * SIZE_LARGE + 10, False),
+        (100, NOCROSS_ALIGNMENT),
+        (200, NOCROSS_ALIGNMENT),
+        (500, NOCROSS_ALIGNMENT),
+        (int(1e5), NOCROSS_ALIGNMENT),
+        (int(1e8), NOCROSS_ALIGNMENT),
+        (DEFAULT_CHUNK_SIZE, NOCROSS_ALIGNMENT),
+        (DEFAULT_CHUNK_SIZE - 10, NOCROSS_ALIGNMENT),
+        (DEFAULT_CHUNK_SIZE + 10, NOCROSS_ALIGNMENT),
+        (2 * DEFAULT_CHUNK_SIZE, NOCROSS_ALIGNMENT),
+        (SIZE_LARGE, NOCROSS_ALIGNMENT),
+        (SIZE_LARGE + 1, NOCROSS_ALIGNMENT),
+        (SIZE_LARGE - 1, NOCROSS_ALIGNMENT),
+        (2 * SIZE_LARGE + 10, NOCROSS_ALIGNMENT),
+        (100, CONTIGUOUS_ALIGNMENT),
+        (200, CONTIGUOUS_ALIGNMENT),
+        (500, CONTIGUOUS_ALIGNMENT),
+        (int(1e5), CONTIGUOUS_ALIGNMENT),
+        (int(1e8), CONTIGUOUS_ALIGNMENT),
+        (DEFAULT_CHUNK_SIZE, CONTIGUOUS_ALIGNMENT),
+        (DEFAULT_CHUNK_SIZE - 10, CONTIGUOUS_ALIGNMENT),
+        (DEFAULT_CHUNK_SIZE + 10, CONTIGUOUS_ALIGNMENT),
+        (2 * DEFAULT_CHUNK_SIZE, CONTIGUOUS_ALIGNMENT),
+        (SIZE_LARGE, CONTIGUOUS_ALIGNMENT),
+        (SIZE_LARGE + 1, CONTIGUOUS_ALIGNMENT),
+        (SIZE_LARGE - 1, CONTIGUOUS_ALIGNMENT),
+        (2 * SIZE_LARGE + 10, CONTIGUOUS_ALIGNMENT),
+        (100, START_ALIGNMENT),
+        (200, START_ALIGNMENT),
+        (500, START_ALIGNMENT),
+        (int(1e5), START_ALIGNMENT),
+        (int(1e8), START_ALIGNMENT),
+        (DEFAULT_CHUNK_SIZE, START_ALIGNMENT),
+        (DEFAULT_CHUNK_SIZE - 10, START_ALIGNMENT),
+        (DEFAULT_CHUNK_SIZE + 10, START_ALIGNMENT),
+        (2 * DEFAULT_CHUNK_SIZE, START_ALIGNMENT),
+        (SIZE_LARGE, START_ALIGNMENT),
+        (SIZE_LARGE + 1, START_ALIGNMENT),
+        (SIZE_LARGE - 1, START_ALIGNMENT),
+        (2 * SIZE_LARGE + 10, START_ALIGNMENT),
     ],
 )
-def test_schunk_large_many_chunksize(chunksize: int, start_aligned: bool) -> None:
+def test_schunk_large_many_chunksize(chunksize: int, alignment: TYPE_ALIGNMENT) -> None:
     """Test storing many large files with different chunk sizes."""
     NAME: Final = "test_name"
     names: List[str] = []
@@ -292,7 +319,7 @@ def test_schunk_large_many_chunksize(chunksize: int, start_aligned: bool) -> Non
         names.append(NAME + str(x))
         content.append(randbytes(SIZE_LARGE))
     s = _create_default_schunk(chunksize=chunksize)
-    storage = SChunkStore(location=s, start_aligned=start_aligned)
+    storage = SChunkStore(location=s, alignment=alignment)
     for name, data in zip(names, content):
         storage.put(name, data)
     for name, data in zip(names, content):
@@ -302,36 +329,48 @@ def test_schunk_large_many_chunksize(chunksize: int, start_aligned: bool) -> Non
 
 
 @mark.parametrize(
-    "chunksize,start_aligned,typesize",
+    "chunksize,alignment,typesize",
     [
-        (int(2**10), True, 1),
-        (int(2**10), True, 2),
-        (int(2**10), True, 4),
-        (int(2**10), True, 8),
-        (int(2**15), True, 1),
-        (int(2**15), True, 2),
-        (int(2**15), True, 4),
-        (int(2**15), True, 8),
-        (int(2**20), True, 1),
-        (int(2**20), True, 2),
-        (int(2**20), True, 4),
-        (int(2**20), True, 8),
-        (int(2**10), False, 1),
-        (int(2**10), False, 2),
-        (int(2**10), False, 4),
-        (int(2**10), False, 8),
-        (int(2**15), False, 1),
-        (int(2**15), False, 2),
-        (int(2**15), False, 4),
-        (int(2**15), False, 8),
-        (int(2**20), False, 1),
-        (int(2**20), False, 2),
-        (int(2**20), False, 4),
-        (int(2**20), False, 8),
+        (int(2**10), NOCROSS_ALIGNMENT, 1),
+        (int(2**10), NOCROSS_ALIGNMENT, 2),
+        (int(2**10), NOCROSS_ALIGNMENT, 4),
+        (int(2**10), NOCROSS_ALIGNMENT, 8),
+        (int(2**15), NOCROSS_ALIGNMENT, 1),
+        (int(2**15), NOCROSS_ALIGNMENT, 2),
+        (int(2**15), NOCROSS_ALIGNMENT, 4),
+        (int(2**15), NOCROSS_ALIGNMENT, 8),
+        (int(2**20), NOCROSS_ALIGNMENT, 1),
+        (int(2**20), NOCROSS_ALIGNMENT, 2),
+        (int(2**20), NOCROSS_ALIGNMENT, 4),
+        (int(2**20), NOCROSS_ALIGNMENT, 8),
+        (int(2**10), CONTIGUOUS_ALIGNMENT, 1),
+        (int(2**10), CONTIGUOUS_ALIGNMENT, 2),
+        (int(2**10), CONTIGUOUS_ALIGNMENT, 4),
+        (int(2**10), CONTIGUOUS_ALIGNMENT, 8),
+        (int(2**15), CONTIGUOUS_ALIGNMENT, 1),
+        (int(2**15), CONTIGUOUS_ALIGNMENT, 2),
+        (int(2**15), CONTIGUOUS_ALIGNMENT, 4),
+        (int(2**15), CONTIGUOUS_ALIGNMENT, 8),
+        (int(2**20), CONTIGUOUS_ALIGNMENT, 1),
+        (int(2**20), CONTIGUOUS_ALIGNMENT, 2),
+        (int(2**20), CONTIGUOUS_ALIGNMENT, 4),
+        (int(2**20), CONTIGUOUS_ALIGNMENT, 8),
+        (int(2**10), START_ALIGNMENT, 1),
+        (int(2**10), START_ALIGNMENT, 2),
+        (int(2**10), START_ALIGNMENT, 4),
+        (int(2**10), START_ALIGNMENT, 8),
+        (int(2**15), START_ALIGNMENT, 1),
+        (int(2**15), START_ALIGNMENT, 2),
+        (int(2**15), START_ALIGNMENT, 4),
+        (int(2**15), START_ALIGNMENT, 8),
+        (int(2**20), START_ALIGNMENT, 1),
+        (int(2**20), START_ALIGNMENT, 2),
+        (int(2**20), START_ALIGNMENT, 4),
+        (int(2**20), START_ALIGNMENT, 8),
     ],
 )
 def test_schunk_large_many_typesize(
-    chunksize: int, start_aligned: bool, typesize: int
+    chunksize: int, alignment: TYPE_ALIGNMENT, typesize: int
 ) -> None:
     """Test storing many large files with different type and chunk sizes."""
     NAME: Final = "test_name"
@@ -346,7 +385,7 @@ def test_schunk_large_many_typesize(
     cparams["codec"] = blosc2.Codec.LZ4HC
 
     s = _create_default_schunk(chunksize=chunksize, cparams=cparams)
-    storage = SChunkStore(location=s, start_aligned=start_aligned)
+    storage = SChunkStore(location=s, alignment=alignment)
     for name, data in zip(names, content):
         storage.put(name, data)
     for name, data in zip(names, content):
@@ -356,13 +395,14 @@ def test_schunk_large_many_typesize(
 
 
 @mark.parametrize(
-    "start_aligned",
+    "alignment",
     [
-        True,
-        False,
+        NOCROSS_ALIGNMENT,
+        CONTIGUOUS_ALIGNMENT,
+        START_ALIGNMENT,
     ],
 )
-def test_schunk_manual_numpy(start_aligned: bool) -> None:
+def test_schunk_manual_numpy(alignment: TYPE_ALIGNMENT) -> None:
     """Test if numpy arrays can be manually serialized."""
     from numpy.random import default_rng
     import numpy as np
@@ -375,7 +415,7 @@ def test_schunk_manual_numpy(start_aligned: bool) -> None:
     SHAPE_2: Final = (62, 450, 53, 37)
     data2 = rng.random(SHAPE_2, dtype=np.float64)
 
-    storage = SChunkStore(start_aligned=start_aligned)
+    storage = SChunkStore(alignment=alignment)
     storage.put(NAME_1, data1.tobytes())
     storage.put(NAME_2, data2.tobytes())
 
@@ -398,13 +438,14 @@ def test_schunk_manual_numpy(start_aligned: bool) -> None:
 
 
 @mark.parametrize(
-    "start_aligned",
+    "alignment",
     [
-        True,
-        False,
+        NOCROSS_ALIGNMENT,
+        CONTIGUOUS_ALIGNMENT,
+        START_ALIGNMENT,
     ],
 )
-def test_schunk_manual_numpy_disk(start_aligned: bool) -> None:
+def test_schunk_manual_numpy_disk(alignment: TYPE_ALIGNMENT) -> None:
     """Test if numpy arrays can be manually serialized.
 
     Uses on disk storage for underlying schunk.
@@ -422,7 +463,7 @@ def test_schunk_manual_numpy_disk(start_aligned: bool) -> None:
     data2 = rng.random(SHAPE_2, dtype=np.float64)
 
     s = _create_default_schunk(filename=FILENAME)
-    storage = SChunkStore(location=s, start_aligned=start_aligned)
+    storage = SChunkStore(location=s, alignment=alignment)
     storage.put(NAME_1, data1.tobytes())
     storage.put(NAME_2, data2.tobytes())
 

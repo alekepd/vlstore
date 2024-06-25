@@ -263,6 +263,17 @@ _T_KEY = TypeVar("_T_KEY", bound=TYPE_KEY)
 _TUPLE_FORM = Tuple[_T_KEY, int, int]
 
 
+_TYPE_NO_CROSS_ALIGNMENT = Literal["no_cross"]
+_TYPE_CONTIGUOUS_ALIGNMENT = Literal["contiguous"]
+_TYPE_START_ALIGNMENT = Literal["start"]
+TYPE_ALIGNMENT = Union[
+    _TYPE_NO_CROSS_ALIGNMENT, _TYPE_CONTIGUOUS_ALIGNMENT, _TYPE_START_ALIGNMENT
+]
+NOCROSS_ALIGNMENT: Final = "no_cross"
+CONTIGUOUS_ALIGNMENT: Final = "contiguous"
+START_ALIGNMENT: Final = "start"
+
+
 class LocationIndex(Generic[_T_KEY]):
     """Key-store of Locations.
 
@@ -300,7 +311,7 @@ class LocationIndex(Generic[_T_KEY]):
     def __setitem__(self, key: _T_KEY, value: Location) -> None:
         """Set item by key."""
         self.backing[key] = value
-        if self._first is None or value.end < self._first.start:
+        if self._first is None or value.start < self._first.start:
             self._first = value
         if self._last is None or value.end > self._last.end:
             self._last = value
@@ -343,16 +354,24 @@ class LocationIndex(Generic[_T_KEY]):
         return [(key, record.start, record.end) for key, record in self.backing.items()]
 
     def plan(
-        self, size: int, start_aligned: bool = True, block_size: Optional[int] = None
+        self,
+        size: int,
+        alignment: TYPE_ALIGNMENT = NOCROSS_ALIGNMENT,
+        block_size: Optional[int] = None,
     ) -> Location:
         """Return location corresponding to free space.
 
         Arguments:
         ---------
         size:
-            size of requested space.
-        start_aligned:
-            Whether to align the proposed space at the start of a empty block.
+            Size of requested space.
+        alignment:
+            Strategy used to allocate given space. Possible options are given in
+            module variables NOCROSS_ALIGNMENT, CONTIGUOUS_ALIGNMENT, and
+            START_ALIGNMENT. The first allocates space for new entries in the most
+            compact way such that no record crosses a chunk (not block) boundary.
+            The second aligns records contiguously, and the third only places records
+            at the start of each chunk.
         block_size:
             The size of block to use in the allocation. If Locations are already
             present (i.e., length > 0), setting None will use the block size
@@ -370,11 +389,22 @@ class LocationIndex(Generic[_T_KEY]):
                 raise ValueError("When empty, block_size must be specified.") from e
 
         if not self.backing:
+            # we have no records
             start = 0
-        elif start_aligned:
+        elif alignment == NOCROSS_ALIGNMENT:
+            # if there is enough space in the current block for the record, put it
+            # there; otherwise skip forward to the next block.
+            if abs(self.last.end_offset) > size:
+                start = self.last.end
+            else:
+                start = self.last.end_block * self.last.block_size
+        elif alignment == CONTIGUOUS_ALIGNMENT:
+            start = self.last.end
+        elif alignment == START_ALIGNMENT:
             start = self.last.end_block * self.last.block_size
         else:
-            start = self.last.end
+            raise ValueError(f"Invalid allocation alignment strategy: {alignment}.")
+
         return Location.from_start_end(start, start + size, block_size=block_size)
 
     @classmethod
@@ -590,7 +620,7 @@ class SChunkStore:
     def __init__(
         self,
         location: Union[None, _TYPE_PATHCOMPAT, blosc2.SChunk] = None,
-        start_aligned: bool = True,
+        alignment: TYPE_ALIGNMENT = NOCROSS_ALIGNMENT,
         **kwargs,
     ) -> None:
         """Initialize BStore.
@@ -603,28 +633,36 @@ class SChunkStore:
             read-only. If None, an in-memory store is used. If an Schunk instance,
             directly used as store. Note that in the last case limited validation
             on the instance is performed, and context manager behavior is limited.
-        start_aligned:
-            Whether memory allocations should be aligned to the start of the next
-            free chunk. This makes storage faster and individual retrieval faster,
-            but may increase memory load.
+        alignment:
+            Strategy used to allocate given space. Possible options are given in
+            module variables NOCROSS_ALIGNMENT, CONTIGUOUS_ALIGNMENT, and
+            START_ALIGNMENT. The first allocates space for new entries in the most
+            compact way such that no record crosses a chunk (not block) boundary.
+            The second aligns records contiguously, and the third only places records
+            at the start of each chunk.
         **kwargs:
             Passed to schunk creation if file/in-memory store is created. If opening
             and existing file, ignored.
 
         """
         self.lookup: LocationIndex[TYPE_KEY] = LocationIndex()
-        self.start_aligned = start_aligned
-        if "meta" in kwargs:
-            kwargs["meta"].update({self.META_MAGIC: self.MAGIC})
+        self.alignment = alignment
+        options = kwargs.copy()
+        if "meta" in options:
+            options["meta"].update({self.META_MAGIC: self.MAGIC})
         else:
-            kwargs["meta"] = {self.META_MAGIC: self.MAGIC}
+            options["meta"] = {self.META_MAGIC: self.MAGIC}
 
         # manage schunk store
         self.read_only = False
         if location is None:
             # in-memory backing
-            self.backing = _create_default_schunk(**kwargs)
+            self.backing = _create_default_schunk(**options)
         elif isinstance(location, blosc2.SChunk):
+            if len(kwargs) > 0:
+                raise ValueError(
+                    "Schunk directly passed but construction options are also present."
+                )
             self.backing = location
         else:
             # disk backing
@@ -644,7 +682,7 @@ class SChunkStore:
                     block_size=self.chunksize,
                 )
             elif _p.parent.is_dir():
-                self.backing = _create_default_schunk(filename=_p, **kwargs)
+                self.backing = _create_default_schunk(filename=_p, **options)
             else:
                 raise ValueError("Could not use file location.")
 
@@ -714,7 +752,7 @@ class SChunkStore:
             raise ValueError("Cannot store length-0 bytes.")
         # get required locations we will write to
         location = self.lookup.plan(
-            value_size, start_aligned=self.start_aligned, block_size=self.chunksize
+            value_size, alignment=self.alignment, block_size=self.chunksize
         )
         location_chunks = location.block_split()
         # break data into those chunk sizes
