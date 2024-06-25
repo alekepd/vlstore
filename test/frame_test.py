@@ -1,16 +1,20 @@
 """Test flatbuffer record serialization."""
 from typing import Dict
+from pytest import mark
 import numpy as np
 from numpy.random import randint
 from random import choice, shuffle
+import blosc2  # type: ignore
 from vlstore.serialize import BackedAtomicDataCodec, BackedAtomicData
-from vlstore.store import Depot, SChunkStore
+from vlstore.store import Depot, SChunkStore, _create_default_schunk
 
 
-def test_backed_atomic_data_single_groundtruth() -> None:
+@mark.parametrize("typesize", [1, 2, 4, 8, 16, 32, 64])
+def test_backed_atomic_data_single_groundtruth(typesize: int) -> None:
     """Test serialization of BackedAtomicData on a single molecule type.
 
     BackedAtomicData instances are extracted and compared to source numpy arrays.
+    Multiple typesizes are considered.
     """
     N_ITER = 300
     NAME = "frame_"
@@ -20,7 +24,11 @@ def test_backed_atomic_data_single_groundtruth() -> None:
     FORCES = np.random.rand(N_ITER, NSITES, 3).astype(np.float32)  # noqa: NPY002
     MASSES = np.random.rand(NSITES).astype(np.float32)  # noqa: NPY002
 
-    storage = SChunkStore(chunksize=int(2**22), location=None, alignment="no_cross")
+    cparams = blosc2.cparams_dflts.copy()
+    cparams["typesize"] = typesize
+
+    s = _create_default_schunk(chunksize=int(2**22), cparams=cparams)
+    storage = SChunkStore(location=s, alignment="no_cross")
     with Depot(codec=BackedAtomicDataCodec, backing=storage) as d:
         for ident, (pos_frame, force_frame) in enumerate(zip(POSITIONS, FORCES)):
             name = NAME + str(ident)
