@@ -300,7 +300,7 @@ class LocationIndex(Generic[_T_KEY]):
     def __setitem__(self, key: _T_KEY, value: Location) -> None:
         """Set item by key."""
         self.backing[key] = value
-        if self._first is None or value.end < self._first.start:
+        if self._first is None or value.start < self._first.start:
             self._first = value
         if self._last is None or value.end > self._last.end:
             self._last = value
