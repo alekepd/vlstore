@@ -44,7 +44,10 @@ from vlstore.store import Depot, SChunkStore
 # here is where we will save our data on disk.
 FILENAME = "mol.store"
 
+
+
 ### These parameters control our randomly generated test data ###
+
 # number of time snapshots to create
 N_FRAMES = 300
 # number of atoms in each snapshot
@@ -57,6 +60,9 @@ MASSES = np.random.rand(NSITES).astype(np.float32)  # noqa: NPY002
 POSITIONS = np.random.rand(N_FRAMES, NSITES, 3).astype(np.float32)  # noqa: NPY002
 FORCES = np.random.rand(N_FRAMES, NSITES, 3).astype(np.float32)  # noqa: NPY002
 
+
+
+### Now we store that data on disk ###
 
 # SChunkStore allows us to store bytes on disk using blosc2, a high performance i/o library.
 #  The options here change details of how the data is stored on disk and change performance.
