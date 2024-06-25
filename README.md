@@ -40,14 +40,10 @@ import numpy as np
 from vlstore.serialize import BackedAtomicDataCodec, BackedAtomicData
 # these classes allow us to save and load data from disk.
 from vlstore.store import Depot, SChunkStore
+```
 
-# here is where we will save our data on disk.
-FILENAME = "mol.store"
-
-
-
-### These parameters control our randomly generated test data ###
-
+We then create some random test data to store.
+```python
 # number of time snapshots to create
 N_FRAMES = 300
 # number of atoms in each snapshot
@@ -59,11 +55,18 @@ MASSES = np.random.rand(NSITES).astype(np.float32)  # noqa: NPY002
 # positions and forces for entire trajectory that we will store
 POSITIONS = np.random.rand(N_FRAMES, NSITES, 3).astype(np.float32)  # noqa: NPY002
 FORCES = np.random.rand(N_FRAMES, NSITES, 3).astype(np.float32)  # noqa: NPY002
+```
+
+This is where we will save our data on disk.
+
+```python
+FILENAME = "mol.store"
+```
 
 
+Now we store that data on disk.
 
-### Now we store that data on disk ###
-
+```python
 # SChunkStore allows us to store bytes on disk using blosc2, a high performance i/o library.
 #  The options here change details of how the data is stored on disk and change performance.
 #
@@ -91,7 +94,7 @@ with Depot(codec=BackedAtomicDataCodec, backing=storage_interface) as d:
 del storage # our data was flushed to disk after leaving the with block
 ```
 
-Our data is now stored on disk. We can retrieve it with similar code:
+Our data is now saved. We can retrieve it with similar code:
 
 ```python
 # we recreate the interface fresh. When loading existing files, parameters are not needed.
