@@ -1,5 +1,7 @@
 # vlstore
 
+![testing](https://github.com/alekepd/vlstore/actions/workflows/test.yaml/badge.svg)
+
 Fast tools for saving variable-length records on disk.
 
 #### This project is in active development. Interfaces and formats may change without warning.
