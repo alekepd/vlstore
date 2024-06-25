@@ -34,6 +34,7 @@ $ pip install .
 Once installed, you need to create a `Codec` which translates your object to and from a `memoryview` object.
 A `Codec` is included for data typical to molecular dynamics trajectories; here is how to use it with randomly generated data:
 
+We first import the required libraries.
 ```python
 import numpy as np
 # these data types are how we represent and serialize a frame of MD data.
@@ -43,6 +44,7 @@ from vlstore.store import Depot, SChunkStore
 ```
 
 We then create some random test data to store.
+
 ```python
 # number of time snapshots to create
 N_FRAMES = 300
@@ -57,7 +59,7 @@ POSITIONS = np.random.rand(N_FRAMES, NSITES, 3).astype(np.float32)  # noqa: NPY0
 FORCES = np.random.rand(N_FRAMES, NSITES, 3).astype(np.float32)  # noqa: NPY002
 ```
 
-This is where we will save our data on disk.
+This is the name of the file that will contain our saved data.
 
 ```python
 FILENAME = "mol.store"
