@@ -3,12 +3,14 @@
 
 # namespace: FBSites
 
-import flatbuffers # type: ignore
+import flatbuffers  # type: ignore
 from flatbuffers.compat import import_numpy  # type: ignore
+
 np = import_numpy()
 
+
 class FBFrame(object):
-    __slots__ = ['_tab']
+    __slots__ = ["_tab"]
 
     @classmethod
     def GetRootAs(cls, buf, offset=0):
@@ -21,6 +23,7 @@ class FBFrame(object):
     def GetRootAsFBFrame(cls, buf, offset=0):
         """This method is deprecated. Please switch to GetRootAs."""
         return cls.GetRootAs(buf, offset)
+
     # FBFrame
     def Init(self, buf, pos):
         self._tab = flatbuffers.table.Table(buf, pos)
@@ -51,7 +54,10 @@ class FBFrame(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(10))
         if o != 0:
             a = self._tab.Vector(o)
-            return self._tab.Get(flatbuffers.number_types.Int32Flags, a + flatbuffers.number_types.UOffsetTFlags.py_type(j * 4))
+            return self._tab.Get(
+                flatbuffers.number_types.Int32Flags,
+                a + flatbuffers.number_types.UOffsetTFlags.py_type(j * 4),
+            )
         return 0
 
     # FBFrame
@@ -78,7 +84,10 @@ class FBFrame(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(12))
         if o != 0:
             a = self._tab.Vector(o)
-            return self._tab.Get(flatbuffers.number_types.Float32Flags, a + flatbuffers.number_types.UOffsetTFlags.py_type(j * 4))
+            return self._tab.Get(
+                flatbuffers.number_types.Float32Flags,
+                a + flatbuffers.number_types.UOffsetTFlags.py_type(j * 4),
+            )
         return 0
 
     # FBFrame
@@ -105,7 +114,10 @@ class FBFrame(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(14))
         if o != 0:
             a = self._tab.Vector(o)
-            return self._tab.Get(flatbuffers.number_types.Float32Flags, a + flatbuffers.number_types.UOffsetTFlags.py_type(j * 4))
+            return self._tab.Get(
+                flatbuffers.number_types.Float32Flags,
+                a + flatbuffers.number_types.UOffsetTFlags.py_type(j * 4),
+            )
         return 0
 
     # FBFrame
@@ -132,7 +144,10 @@ class FBFrame(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(16))
         if o != 0:
             a = self._tab.Vector(o)
-            return self._tab.Get(flatbuffers.number_types.Float32Flags, a + flatbuffers.number_types.UOffsetTFlags.py_type(j * 4))
+            return self._tab.Get(
+                flatbuffers.number_types.Float32Flags,
+                a + flatbuffers.number_types.UOffsetTFlags.py_type(j * 4),
+            )
         return 0
 
     # FBFrame
@@ -154,80 +169,116 @@ class FBFrame(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(16))
         return o == 0
 
+
 def FBFrameStart(builder):
     builder.StartObject(7)
+
 
 def Start(builder):
     FBFrameStart(builder)
 
+
 def FBFrameAddName(builder, name):
-    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(name), 0)
+    builder.PrependUOffsetTRelativeSlot(
+        0, flatbuffers.number_types.UOffsetTFlags.py_type(name), 0
+    )
+
 
 def AddName(builder, name):
     FBFrameAddName(builder, name)
 
+
 def FBFrameAddNsites(builder, nsites):
     builder.PrependInt32Slot(1, nsites, 0)
+
 
 def AddNsites(builder, nsites):
     FBFrameAddNsites(builder, nsites)
 
+
 def FBFrameAddNcodim(builder, ncodim):
     builder.PrependInt32Slot(2, ncodim, 3)
+
 
 def AddNcodim(builder, ncodim):
     FBFrameAddNcodim(builder, ncodim)
 
+
 def FBFrameAddTypes(builder, types):
-    builder.PrependUOffsetTRelativeSlot(3, flatbuffers.number_types.UOffsetTFlags.py_type(types), 0)
+    builder.PrependUOffsetTRelativeSlot(
+        3, flatbuffers.number_types.UOffsetTFlags.py_type(types), 0
+    )
+
 
 def AddTypes(builder, types):
     FBFrameAddTypes(builder, types)
 
+
 def FBFrameStartTypesVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
+
 
 def StartTypesVector(builder, numElems):
     return FBFrameStartTypesVector(builder, numElems)
 
+
 def FBFrameAddMasses(builder, masses):
-    builder.PrependUOffsetTRelativeSlot(4, flatbuffers.number_types.UOffsetTFlags.py_type(masses), 0)
+    builder.PrependUOffsetTRelativeSlot(
+        4, flatbuffers.number_types.UOffsetTFlags.py_type(masses), 0
+    )
+
 
 def AddMasses(builder, masses):
     FBFrameAddMasses(builder, masses)
 
+
 def FBFrameStartMassesVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
+
 
 def StartMassesVector(builder, numElems):
     return FBFrameStartMassesVector(builder, numElems)
 
+
 def FBFrameAddPositions(builder, positions):
-    builder.PrependUOffsetTRelativeSlot(5, flatbuffers.number_types.UOffsetTFlags.py_type(positions), 0)
+    builder.PrependUOffsetTRelativeSlot(
+        5, flatbuffers.number_types.UOffsetTFlags.py_type(positions), 0
+    )
+
 
 def AddPositions(builder, positions):
     FBFrameAddPositions(builder, positions)
 
+
 def FBFrameStartPositionsVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
+
 
 def StartPositionsVector(builder, numElems):
     return FBFrameStartPositionsVector(builder, numElems)
 
+
 def FBFrameAddForces(builder, forces):
-    builder.PrependUOffsetTRelativeSlot(6, flatbuffers.number_types.UOffsetTFlags.py_type(forces), 0)
+    builder.PrependUOffsetTRelativeSlot(
+        6, flatbuffers.number_types.UOffsetTFlags.py_type(forces), 0
+    )
+
 
 def AddForces(builder, forces):
     FBFrameAddForces(builder, forces)
 
+
 def FBFrameStartForcesVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
+
 
 def StartForcesVector(builder, numElems):
     return FBFrameStartForcesVector(builder, numElems)
 
+
 def FBFrameEnd(builder):
     return builder.EndObject()
+
 
 def End(builder):
     return FBFrameEnd(builder)
