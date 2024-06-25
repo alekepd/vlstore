@@ -17,6 +17,7 @@ from typing import (
     Iterator,
     Callable,
 )
+from math import ceil, floor
 from dataclasses import dataclass
 from pathlib import Path
 from os import PathLike
@@ -746,8 +747,6 @@ class SChunkStore:
         # check value length
         value_view = bytewise_memoryview(value)
         value_size = len(value_view)
-        if value_size % self.backing.typesize != 0:
-            raise ValueError("Storage object size not divisible by typesize.")
         if value_size == 0:
             raise ValueError("Cannot store length-0 bytes.")
         # get required locations we will write to
@@ -938,7 +937,7 @@ class SChunkStore:
         self,
         location: Location,
         out: T_OUT,
-    ) -> T_OUT:
+    ) -> Union[T_OUT, memoryview]:
         ...
 
     @overload
@@ -952,16 +951,22 @@ class SChunkStore:
     def _slice_load(
         self, location: Location, out: Optional[TYPE_OUT] = None
     ) -> TYPE_RETURNDATA:
-        item_start, start_remainder = divmod(location.start, self.typesize)
-        item_end, end_remainder = divmod(location.end, self.typesize)
-        if start_remainder > 0 or end_remainder > 0:
-            raise ValueError("Entry is not typesize aligned.")
+        _ts = self.typesize
+        start_quotient, start_remainder = divmod(location.start, _ts)
+        end_quotient, end_remainder = divmod(location.end, _ts)
+        corrected_end = end_quotient + 1 if end_remainder else end_quotient
         if out is None:
-            return self.backing.get_slice(item_start, item_end)
+            out = self.backing.get_slice(start_quotient, corrected_end)
         else:
             # always return the data containing object
-            self.backing.get_slice(item_start, item_end, out=out)
+            self.backing.get_slice(start_quotient, corrected_end, out=out)
+        if start_remainder == 0 and end_remainder == 0:
             return out
+        else:
+            end_offset = end_remainder - _ts if end_remainder else None
+            buffer = bytewise_memoryview(out)[start_remainder:end_offset]
+            assert len(buffer) == len(location)
+            return buffer
 
     @overload
     def _chunk_load(
