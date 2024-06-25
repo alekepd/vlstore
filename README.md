@@ -12,7 +12,7 @@ This project has not been benchmarked against more established strategies. Befor
 
 * Persistent on-disk or in-memory storage with fast transparent compression via [python-blosc2](https://github.com/Blosc/python-blosc2)
 * Batched record retrieval for reduced I/O operations
-* Zero-copy storage formats through [Flatbuffer](https://github.com/google/flatbuffers)
+* Zero-copy storage formats through [Flatbuffers](https://github.com/google/flatbuffers)
 
 ## How To Use
 
