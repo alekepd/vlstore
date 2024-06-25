@@ -37,7 +37,9 @@ DEFAULT_CHUNK_SIZE: Final = int(2**22)
 
 _default_cparams = blosc2.cparams_dflts.copy()
 _default_cparams["typesize"] = 1
-_default_cparams["codec"] = blosc2.Codec.LZ4HC
+_default_cparams["codec"] = blosc2.Codec.ZSTD
+_default_cparams["clevel"] = 1
+
 # setting ["use_dict"] = 1 causes bugs.
 _default_dparams = blosc2.dparams_dflts.copy()
 
@@ -298,7 +300,10 @@ class LocationIndex(Generic[_T_KEY]):
     def __setitem__(self, key: _T_KEY, value: Location) -> None:
         """Set item by key."""
         self.backing[key] = value
-        self._reset_firstlast()
+        if self._first is None or value.end < self._first.start:
+            self._first = value
+        if self._last is None or value.end > self._last.end:
+            self._last = value
 
     def __getitem__(self, key: _T_KEY) -> Location:
         """Get item by key."""
@@ -457,6 +462,7 @@ class _BoundChunkWriter:
             raise ValueError(
                 "Attempting to write block that is not a previous or next block."
             )
+        self.index = None
 
     def associate(self, index: int) -> None:
         """Associate with a new chunk.
@@ -480,7 +486,7 @@ class _BoundChunkWriter:
         None
 
         """
-        if self.index is index:
+        if self.index == index:
             return
 
         if self.index is not None:
