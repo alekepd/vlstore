@@ -74,7 +74,7 @@ class Depot(Generic[_T]):
     ) -> List[_T]:
         """Retrieve and deserialize multiple objects."""
         if not presorted:
-            keys = sorted(keys)
+            keys = sorted(keys, key=lambda x: self.lookup[x].start)
         if buffer is None:
             size = self.backing.fused_size(keys, presorted=True)
             view = self._get_buffer(size)
