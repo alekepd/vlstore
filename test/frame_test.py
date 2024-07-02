@@ -61,7 +61,7 @@ def test_backed_atomic_data_multi() -> None:
     instances.
     """
     N_ITER = 300
-    NAME = "frame_"
+    NAME = "frame"
     M1, M2, M3 = "MOL_A", "MOL_B", "MOL_C"
     NSITES = {M1: 1200, M2: 882, M3: 100}
     TYPES = {
@@ -84,7 +84,7 @@ def test_backed_atomic_data_multi() -> None:
             )
             name = NAME + "_" + k + "_" + str(ident)
             new = BackedAtomicData.from_values(
-                name=NAME,
+                name=name,
                 masses=MASSES[k],
                 atom_types=TYPES[k],
                 nsites=NSITES[k],
