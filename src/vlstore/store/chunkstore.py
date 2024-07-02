@@ -1135,6 +1135,10 @@ class SChunkStore:
         # should some file be closed? blosc2 documents seem to
         # say no. Perhaps all writes are synchronous.
 
+    def keys(self) -> KeysView:
+        """Get keys of underlying LocationIndex."""
+        return self.backing.keys()
+
     def _init_buffer(self) -> None:
         """Initialize buffer for transfer.
 

@@ -9,9 +9,10 @@ from typing import (
     Any,
     Literal,
     Union,
+    KeysView,
 )
 from pathlib import Path
-from .chunkstore import SChunkStore
+from .chunkstore import SChunkStore, LocationIndex
 from ..serialize import Codec
 from .util import bytewise_memoryview
 from ._types import (
@@ -65,6 +66,19 @@ class Depot(Generic[_T]):
         data = self.backing.get(key, **kwargs)
         return self.codec.unpack(data)
 
+    def fused_buffer_size(self, *args, **kwargs) -> int:
+        """Get size required for a given read.
+
+        This transparently calls the fused_size method of the underlying
+        backing storage. It is convenient, but may stop helpful type inference.
+
+        """
+        return self.backing.fused_size(*args, **kwargs)
+
+    def keys(self) -> KeysView:
+        """Get keys from backing storage."""
+        return self.backing.keys()
+
     def fused_get(
         self,
         keys: Iterable[TYPE_KEY],
@@ -98,6 +112,11 @@ class Depot(Generic[_T]):
     def close(self) -> None:
         """Close underlying storage."""
         self.backing.close()
+
+    @property
+    def lookup(self) -> LocationIndex:
+        """Return lookup table of backing."""
+        return self.backing.lookup
 
     def __enter__(self) -> "Depot":
         """Call __enter__ on underlying storage."""
