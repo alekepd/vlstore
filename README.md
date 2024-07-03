@@ -111,6 +111,22 @@ with Depot(codec=BackedAtomicDataCodec, backing=storage_interface) as d:
     retrieved = d.get(name)
 ```
 
+Instead of loading each frame via its key, we can also create a loader which allows us get shuffled
+data via iteration.
+
+```python
+with Depot(codec=BackedAtomicDataCodec, backing=storage_interface) as d:
+    loader = BlockShuffleBatch(
+        read_size=5,
+        batch_size=1,
+        backing=d,
+        shuffle=True,
+    )
+
+    for batch in loader:
+        print(batch)
+```
+
 
 ## License
 
