@@ -70,6 +70,11 @@ class BackedNList:
         data = self.fb.CellShiftsAsNumpy()
         return data.reshape((-1, 3))
 
+    @property
+    def mapping_batch(self) -> np.ndarray:
+        """Array specifying mapping batch."""
+        return self.fb.MappingBatchAsNumpy()
+
     @classmethod
     def from_values(cls, **kwargs) -> "BackedNList":  # noqa
         """Create instance by passing defining values.
@@ -153,6 +158,7 @@ def create_fbnlist_buffer(
     self_interaction: bool,
     index_mapping: np.ndarray,
     cell_shifts: np.ndarray,
+    mapping_batch: np.ndarray,
     builder: Optional[flatbuffers.Builder] = None,
     check: bool = True,
 ) -> bytes:
@@ -177,6 +183,8 @@ def create_fbnlist_buffer(
         Array of neighboring indices; should be a of shape (2,any).
     cell_shifts:
         Array of cell shifts; should be a of shape (any, 3).
+    mapping_batch:
+        Array of mapping batches; should be 1-D.
     builder:
         flatbuffers.Builder instance or None; if None, a built in instance
         is used.
@@ -218,6 +226,10 @@ def create_fbnlist_buffer(
         builder, data=cell_shifts.flatten().tolist(), fbclass=FBNList
     )
 
+    mapping_batch_offset = add_mapping_batch_vector(
+        builder, data=mapping_batch.tolist(), fbclass=FBNList
+    )
+
     tag_string = builder.CreateString(tag)
 
     FBNList.Start(builder)
@@ -228,6 +240,7 @@ def create_fbnlist_buffer(
     FBNList.AddSelfInteraction(builder, self_interaction)
     FBNList.AddIndexMapping(builder, index_mapping_offset)
     FBNList.AddCellShifts(builder, cell_shifts_offset)
+    FBNList.AddMappingBatch(builder, mapping_batch_offset)
 
     frame_offset = FBNList.End(builder)
 
@@ -243,7 +256,7 @@ def add_index_mapping_vector(
     builder: flatbuffers.Builder, data: np.ndarray, fbclass: Any
 ) -> int:
     """Add index_mapping (int64) vector."""
-    fbclass.StartPositionsVector(builder, len(data))
+    fbclass.StartIndexMappingVector(builder, len(data))
     reversed_data = reversed(data)
     # typically, the call should use: _call = builder.PrependInt64
     # we can get minor speed increases by inlining the corresponding operations,
@@ -264,7 +277,7 @@ def add_cell_shifts_vector(
     builder: flatbuffers.Builder, data: np.ndarray, fbclass: Any
 ) -> int:
     """Add cell_shifts (float32) vector."""
-    fbclass.StartForcesVector(builder, len(data))
+    fbclass.StartCellShiftsVector(builder, len(data))
     reversed_data = reversed(data)
     # typically, the call should use: _call = builder.PrependFloat32
     # we can get minor speed increases by inlining the corresponding operations,
@@ -272,6 +285,27 @@ def add_cell_shifts_vector(
     _call = builder.Prepend
 
     dtype = N.Float32Flags
+    for i in reversed_data:
+        _call(dtype, i)
+    return builder.EndVector()
+
+
+def add_mapping_batch_vector(
+    builder: flatbuffers.Builder, data: np.ndarray, fbclass: Any
+) -> int:
+    """Add mapping_batch (int64) vector."""
+    fbclass.StartMappingBatchVector(builder, len(data))
+    reversed_data = reversed(data)
+    # typically, the call should use: _call = builder.PrependInt64
+    # we can get minor speed increases by inlining the corresponding operations,
+    # but this comes at a risk.
+    _call = builder.Prepend
+
+    # can probably shave off some lookups
+    # https://github.com/google/flatbuffers/blob/dafd2f1f29c5c0c2a6df285e9efe5c49746c6b7a
+    # /python/flatbuffers/builder.py#L638
+
+    dtype = N.Int64Flags
     for i in reversed_data:
         _call(dtype, i)
     return builder.EndVector()
