@@ -1,0 +1,16 @@
+// IDL file for MLCG-type neighbor list
+ 
+namespace FBNList;
+ 
+// single frame struct
+table FBNList {
+  tag: string;
+  order: int;
+  index_mapping: [int64];
+  cell_shifts: [float32];
+  rcut: float64;
+  self_interaction: bool;
+  mapping_batch: [int64];
+}
+
+root_type FBNList;
